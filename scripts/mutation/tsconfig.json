@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023"],
+    "types": ["node"],
+    // Node запускает .ts напрямую и не дописывает расширения в относительных импортах.
+    "allowImportingTsExtensions": true
+  },
+  "include": ["src"]
+}

@@ -1,0 +1,33 @@
+{
+  "name": "@shared/query",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "types": "./src/index.ts",
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "@reduxjs/toolkit": "^2.0.0",
+    "react": "^19.0.0",
+    "react-redux": "^9.0.0",
+    "redux-saga": "^1.0.0"
+  },
+  "dependencies": {
+    "typed-redux-saga": "^1.5.0"
+  },
+  "devDependencies": {
+    "@reduxjs/toolkit": "^2.12.0",
+    "@types/react": "^19.3.0",
+    "react": "^19.3.0",
+    "react-redux": "^9.3.0",
+    "redux-saga": "^1.5.1",
+    "vitest": "^5.0.0"
+  }
+}

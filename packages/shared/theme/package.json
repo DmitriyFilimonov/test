@@ -1,0 +1,21 @@
+{
+  "name": "@shared/theme",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "types": "./src/index.ts",
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "styled-components": "^6.5.3"
+  },
+  "peerDependencies": {
+    "styled-components": "^6.0.0"
+  }
+}

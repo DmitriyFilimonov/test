@@ -1,0 +1,12 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    // Без DOM: пакет — чистые вычисления. node — только ради performance.now() в тесте скорости.
+    "lib": ["ES2023"],
+    "types": ["node"],
+    // База задаёт react-jsx, и TypeScript неявно подтягивает типы react/jsx-runtime даже
+    // без единого .tsx. JSX в пакете нет: preserve снимает эту зависимость.
+    "jsx": "preserve"
+  },
+  "include": ["src"]
+}

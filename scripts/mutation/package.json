@@ -1,0 +1,17 @@
+{
+  "name": "@scripts/mutation",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "start": "node src/run.ts"
+  },
+  "dependencies": {
+    "vitest": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.4"
+  }
+}

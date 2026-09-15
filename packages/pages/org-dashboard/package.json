@@ -1,0 +1,28 @@
+{
+  "name": "@pages/org-dashboard",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "types": "./src/index.ts",
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "react": "^19.3.0",
+    "styled-components": "^6.5.3"
+  },
+  "dependencies": {
+    "@entities/org-tree": "*",
+    "@shared/theme": "*"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "styled-components": "^6.0.0"
+  }
+}

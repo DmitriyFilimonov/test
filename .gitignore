@@ -1,0 +1,11 @@
+node_modules/
+dist/
+dist-ssr/
+.nx/
+*.local
+*.log
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.mutation-backup
