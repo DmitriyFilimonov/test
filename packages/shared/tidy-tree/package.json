@@ -11,7 +11,7 @@
   "scripts": {
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run --root ../../.. packages/shared/tidy-tree/"
   },
   "devDependencies": {
     "@types/node": "^24.13.4",

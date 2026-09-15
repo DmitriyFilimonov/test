@@ -25,6 +25,17 @@ const Card = styled.div`
   font-size: ${({ theme }) => theme.fontSizes.md};
   line-height: 1.25;
 
+  /* Выбор — не только фоном: рамка внутри карточки, и aria-current у кнопки названия. */
+  &[data-selected='true'] {
+    background: ${({ theme }) => theme.colors.selected};
+    box-shadow: inset 0 0 0 2px ${({ theme }) => theme.colors.primary};
+  }
+
+  /* Несовпавшие с фильтром: одно статическое правило, узел остаётся интерактивным. */
+  &[data-dimmed='true'] {
+    opacity: 0.45;
+  }
+
   &[data-performance='critical'] {
     --total-performance-color: ${({ theme }) => theme.colors.performance.critical};
   }
@@ -70,8 +81,26 @@ const Header = styled.div`
   gap: ${({ theme }) => theme.space.xs};
 `;
 
-const Name = styled.div`
+/** Выбор узла с клавиатуры; мышью выбирает клик по любому месту карточки. */
+const SelectButton = styled.button`
   flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: ${({ theme }) => theme.radii.sm};
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px ${({ theme }) => theme.colors.focus};
+  }
+`;
+
+const Name = styled.span`
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -153,6 +182,9 @@ export interface OrgNodeCardProps {
   expanded: boolean;
   width: number;
   height: number;
+  selected: boolean;
+  /** Приглушить: узел не совпал с фильтром, а таблица на экране. */
+  dimmed: boolean;
 }
 
 /**
@@ -160,7 +192,7 @@ export interface OrgNodeCardProps {
  * показаны рядом, подписанными полями; у листа — только численность и эффективность.
  * Только примитивные пропсы: при раскрытии другого узла React.memo пропускает перерисовку.
  * Координаты сюда не приходят — позицию задаёт холст.
- * Клики обрабатывает один делегированный слушатель виджета по data-id / data-chevron.
+ * Клики обрабатывает один делегированный слушатель дерева по data-id / data-chevron.
  */
 export const OrgNodeCard = memo(function OrgNodeCard({
   id,
@@ -175,6 +207,8 @@ export const OrgNodeCard = memo(function OrgNodeCard({
   expanded,
   width,
   height,
+  selected,
+  dimmed,
 }: OrgNodeCardProps) {
   const rows = getMetricRows(
     {
@@ -193,9 +227,13 @@ export const OrgNodeCard = memo(function OrgNodeCard({
         data-id={id}
         data-performance={totalPerformanceLevel}
         data-own-performance={ownPerformanceLevel}
+        data-selected={selected}
+        data-dimmed={dimmed}
       >
         <Header>
-          <Name>{name}</Name>
+          <SelectButton type="button" aria-current={selected ? 'true' : undefined} title={name}>
+            <Name>{name}</Name>
+          </SelectButton>
           {childCount > 0 && (
             <Chevron
               type="button"

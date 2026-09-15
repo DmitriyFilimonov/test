@@ -14,8 +14,11 @@ export const Frame = styled.div`
   contain: layout paint;
 `;
 
+/** Высота как у панели таблицы: в режиме «вместе» холст и таблица начинаются на одной линии. */
 export const Toolbar = styled.div`
   display: flex;
+  align-items: center;
+  height: 32px;
   gap: ${({ theme }) => theme.space.sm};
   margin-bottom: ${({ theme }) => theme.space.sm};
 `;

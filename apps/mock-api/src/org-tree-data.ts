@@ -83,6 +83,12 @@ const CATALOG: Catalog = {
   },
 };
 
+/**
+ * Команды, которые только сформированы и ещё без сотрудников. В данных нужен узел без людей:
+ * его общая эффективность null, и на нём видно, что такие узлы сортируются в конец.
+ */
+const TEAMS_WITHOUT_STAFF = new Set(['Команда базы знаний']);
+
 type Level = 'division' | 'department' | 'team';
 
 const METRIC_RANGES: Record<Level, { headcount: [number, number]; budgetMln: [number, number] }> = {
@@ -109,14 +115,18 @@ function createNode(
   const updatedAt = new Date(
     UPDATED_AT_ANCHOR - random.int(0, MINUTES_IN_90_DAYS) * 60_000,
   ).toISOString();
+  // Числа берутся из генератора и для команды без сотрудников: иначе сдвинулась бы
+  // последовательность, и изменились бы данные всех следующих узлов.
+  const headcount = random.int(range.headcount[0], range.headcount[1]);
+  const performance = random.int(30, 100);
 
   return {
     id,
     name,
     parentId,
-    headcount: random.int(range.headcount[0], range.headcount[1]),
+    headcount: level === 'team' && TEAMS_WITHOUT_STAFF.has(name) ? 0 : headcount,
     budget: budgetRub,
-    performance: random.int(30, 100),
+    performance,
     updatedAt,
   };
 }

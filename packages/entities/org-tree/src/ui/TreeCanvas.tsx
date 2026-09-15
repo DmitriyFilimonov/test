@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { LayoutNode, LayoutResult } from '@shared/tidy-tree';
 import styled, { useTheme } from 'styled-components';
+import { revealBox } from '../lib/revealBox';
+import type { RevealRequest } from '../model/selection';
 import { TreeEdge } from './TreeEdge';
 
 /** Экран = мир · k + (x, y). */
@@ -66,6 +68,11 @@ export interface TreeCanvasProps<T> {
    * холст компенсирует сдвиг узла сдвигом панорамы и не «прыгает».
    */
   anchorId: string | null;
+  /**
+   * Довести узел до экрана минимальным сдвигом панорамы. Выполняется один раз на `nonce`, когда
+   * узел есть в раскладке и размер холста известен: после раскрытия предков — в том же кадре.
+   */
+  revealRequest?: RevealRequest | null;
   'aria-label': string;
 }
 
@@ -81,6 +88,7 @@ export function TreeCanvas<T>({
   layout,
   renderNode,
   anchorId,
+  revealRequest = null,
   'aria-label': ariaLabel,
 }: TreeCanvasProps<T>) {
   const { tree } = useTheme();
@@ -159,6 +167,24 @@ export function TreeCanvas<T>({
       });
     }
   }, [nodesById, size, anchorId, layout.bounds, minZoom]);
+
+  // После подгонки и компенсации якоря: читает уже скорректированный вид.
+  const revealedNonceRef = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    if (!revealRequest || revealRequest.nonce === revealedNonceRef.current || !size) {
+      return;
+    }
+    const node = nodesById.get(revealRequest.id);
+    if (!node) {
+      return;
+    }
+    revealedNonceRef.current = revealRequest.nonce;
+    const current = viewRef.current;
+    const next = revealBox(current, node, size, FIT_PADDING);
+    if (next !== current) {
+      commit(next);
+    }
+  }, [revealRequest, nodesById, size]);
 
   // Жесты: нативные слушатели, чтобы wheel был не пассивным (нужен preventDefault),
   // а pointer-события — пассивными.

@@ -22,6 +22,8 @@ export interface AppTheme {
     edge: string;
     skeleton: string;
     danger: string;
+    /** Фон выбранной строки таблицы (не единственный признак выбора: есть ещё маркер). */
+    selected: string;
     performance: Record<PerformanceLevel, string>;
     /** Индикатор, когда performance не определён (в подразделении 0 человек). */
     performanceNone: string;
@@ -43,6 +45,15 @@ export interface AppTheme {
     canvasHeight: string;
     minZoom: number;
     maxZoom: number;
+  };
+  table: {
+    /**
+     * Высота строки фиксирована (текст в одну строку): высота таблицы задаётся числом строк,
+     * и смена порядка её не меняет.
+     */
+    rowHeight: string;
+    /** Сколько строк рисует скелетон, пока данных нет. */
+    skeletonRows: number;
   };
   fontSizes: {
     sm: string;
@@ -77,6 +88,7 @@ export const theme: AppTheme = {
     edge: '#8c959f',
     skeleton: '#eaeef2',
     danger: '#cf222e',
+    selected: '#ddf4ff',
     performance: {
       critical: '#cf222e',
       low: '#e16f24',
@@ -97,6 +109,10 @@ export const theme: AppTheme = {
     canvasHeight: 'clamp(420px, 70vh, 760px)',
     minZoom: 0.25,
     maxZoom: 2,
+  },
+  table: {
+    rowHeight: '36px',
+    skeletonRows: 10,
   },
   fontSizes: {
     sm: '12px',

@@ -7,12 +7,14 @@
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --root ../.. apps/mock-api/"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
     "@types/node": "^24.13.4",
-    "tsx": "^4.23.13"
+    "tsx": "^4.23.13",
+    "vitest": "^5.0.0"
   },
   "dependencies": {
     "express": "^5.2.1"

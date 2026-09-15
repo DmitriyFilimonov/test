@@ -1,67 +1,28 @@
-import { useCallback, useMemo, useReducer, useState, type MouseEvent } from 'react';
-import { useOrgTree, useOrgTreeStructure, useVisibleOrgTree } from '../model/hooks';
-import { collectExpandableSubtreeIds, type OrgTreeItem } from '../model/selectors';
 import type { LayoutNode } from '@shared/tidy-tree';
-import styled, { useTheme } from 'styled-components';
+import { useCallback } from 'react';
+import styled from 'styled-components';
 import { getNodeMetrics } from '../lib/nodeMetrics';
-import { useTreeLayout } from '../lib/useTreeLayout';
-import { expansionReducer } from '../model/expansion';
+import type { OrgTreeItem } from '../model/selectors';
+import { useTreeModel, type OrgTreeViewProps } from '../model/useTreeModel';
 import { OrgNodeCard } from './OrgNodeCard';
 import { Button, ErrorBanner, Frame, Toolbar, ValidatingBadge } from './primitives';
 import { EmptyState, ErrorState, TreeSkeleton } from './states';
 import { TreeCanvas } from './TreeCanvas';
 
+export type { OrgTreeViewProps } from '../model/useTreeModel';
+
 const TreeArea = styled.div`
   height: 100%;
 `;
 
-/** Дерево оргструктуры: данные, состояния загрузки/ошибки/пустого ответа, раскрытие, холст. */
-export function OrgTreeView() {
-  const { tree } = useTheme();
-  const { status, error, hasData, isEmpty, isValidating, retry } = useOrgTree();
-  const { firstLevelIds, expandableIds, childrenIndex } = useOrgTreeStructure();
-
-  // Раскрытие — локальное состояние компонента. По умолчанию раскрыты узлы первого уровня:
-  // видны дивизионы и отделы, команды скрыты.
-  const [expansion, dispatchExpansion] = useReducer(expansionReducer, null);
-  const defaultExpanded = useMemo(() => new Set(firstLevelIds), [firstLevelIds]);
-  const expandedIds = expansion ?? defaultExpanded;
-  const [anchorId, setAnchorId] = useState<string | null>(null);
-
-  const visibleTree = useVisibleOrgTree(expandedIds);
-  const layout = useTreeLayout(visibleTree, tree.nodeSize);
-
-  // Один делегированный слушатель на весь холст вместо обработчика на каждом узле.
-  const handleClick = useCallback(
-    (event: MouseEvent<HTMLDivElement>) => {
-      const chevron = (event.target as Element).closest('[data-chevron]');
-      const id = chevron?.closest<HTMLElement>('[data-id]')?.dataset.id;
-      if (!id) {
-        return;
-      }
-      setAnchorId(id);
-      if (event.altKey) {
-        dispatchExpansion({
-          type: 'expand',
-          ids: collectExpandableSubtreeIds(childrenIndex, id),
-          current: expandedIds,
-        });
-      } else {
-        dispatchExpansion({ type: 'toggle', id, current: expandedIds });
-      }
-    },
-    [childrenIndex, expandedIds],
-  );
-
-  const expandAll = useCallback(() => {
-    setAnchorId(firstLevelIds[0] ?? null);
-    dispatchExpansion({ type: 'replace', ids: expandableIds });
-  }, [expandableIds, firstLevelIds]);
-
-  const collapseAll = useCallback(() => {
-    setAnchorId(firstLevelIds[0] ?? null);
-    dispatchExpansion({ type: 'replace', ids: [] });
-  }, [firstLevelIds]);
+/**
+ * Дерево оргструктуры: состояния загрузки/ошибки/пустого ответа, холст, кнопки раскрытия.
+ * Раскрытие управляемое (`expandedIds` и колбэки) или своё (`defaultExpandedIds`); логика —
+ * в `useTreeModel`.
+ */
+export function OrgTreeView(props: OrgTreeViewProps) {
+  const model = useTreeModel(props);
+  const { expandedIds, selectedId, dimUnmatched } = model;
 
   const renderNode = useCallback(
     (node: LayoutNode<OrgTreeItem>) => {
@@ -80,31 +41,37 @@ export function OrgTreeView() {
           expanded={expandedIds.has(node.id)}
           width={node.width}
           height={node.height}
+          selected={node.id === selectedId}
+          dimmed={dimUnmatched && !node.data.matches}
         />
       );
     },
-    [expandedIds],
+    [expandedIds, selectedId, dimUnmatched],
   );
 
-  const hasTree = hasData && !isEmpty;
-  const isRequesting = status === 'loading';
-
   let content;
-  if (hasTree) {
+  if (model.hasTree) {
     content = (
-      <TreeArea onClick={handleClick}>
+      <TreeArea onClick={model.handleClick}>
         <TreeCanvas
-          layout={layout}
+          layout={model.layout}
           renderNode={renderNode}
-          anchorId={anchorId}
+          anchorId={model.anchorId}
+          revealRequest={model.revealRequest}
           aria-label="Оргструктура"
         />
       </TreeArea>
     );
-  } else if (hasData) {
+  } else if (model.hasData) {
     content = <EmptyState />;
-  } else if (status === 'error') {
-    content = <ErrorState message={error?.message} onRetry={retry} retrying={isRequesting} />;
+  } else if (model.status === 'error') {
+    content = (
+      <ErrorState
+        message={model.error?.message}
+        onRetry={model.retry}
+        retrying={model.isRequesting}
+      />
+    );
   } else {
     content = <TreeSkeleton />;
   }
@@ -112,24 +79,24 @@ export function OrgTreeView() {
   return (
     <section>
       <Toolbar>
-        <Button type="button" onClick={expandAll} disabled={!hasTree}>
+        <Button type="button" onClick={model.expandAll} disabled={!model.hasTree}>
           Развернуть всё
         </Button>
-        <Button type="button" onClick={collapseAll} disabled={!hasTree}>
+        <Button type="button" onClick={model.collapseAll} disabled={!model.hasTree}>
           Свернуть всё
         </Button>
       </Toolbar>
       <Frame>
         {content}
-        {hasData && status === 'error' && (
+        {model.hasData && model.status === 'error' && (
           <ErrorBanner role="alert">
             Не удалось обновить данные
-            <Button type="button" onClick={retry} disabled={isRequesting}>
+            <Button type="button" onClick={model.retry} disabled={model.isRequesting}>
               Повторить
             </Button>
           </ErrorBanner>
         )}
-        <ValidatingBadge role="status" data-active={isValidating}>
+        <ValidatingBadge role="status" data-active={model.isValidating}>
           Обновление…
         </ValidatingBadge>
       </Frame>

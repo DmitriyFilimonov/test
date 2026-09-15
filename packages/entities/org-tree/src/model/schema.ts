@@ -10,13 +10,18 @@ export const orgNodeSchema = z.strictObject({
   performance: z.number().int().min(0).max(100),
   /** ISO 8601 в UTC; zod проверяет и календарь (30 февраля не пройдёт). */
   updatedAt: z.iso.datetime(),
+  /** Совпал ли собственный name узла с q запроса. */
+  matches: z.boolean(),
+  /** 0-based позиция в серверной сортировке, сквозная по всем узлам. */
+  order: z.number().int().min(0),
 });
 
 export type OrgNode = z.infer<typeof orgNodeSchema>;
 
 /**
  * Массив узлов плюс целостность дерева: id уникальны, parentId указывает на
- * существующий узел, циклов нет. Любое нарушение — ошибка всего ответа.
+ * существующий узел, циклов нет, order — перестановка 0..n-1. Любое нарушение — ошибка
+ * всего ответа.
  */
 export const orgTreeResponseSchema = z.array(orgNodeSchema).superRefine((nodes, ctx) => {
   const indexById = new Map<string, number>();
@@ -60,6 +65,26 @@ export const orgTreeResponseSchema = z.array(orgNodeSchema).superRefine((nodes, 
       state[index] = 2;
     }
   }
+
+  // order: n значений в диапазоне 0..n-1 без повторов — значит, покрыт весь диапазон.
+  const orderSeen = new Uint8Array(nodes.length);
+  nodes.forEach((node, index) => {
+    if (node.order >= nodes.length) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `order ${node.order} is out of range 0..${nodes.length - 1}`,
+        path: [index, 'order'],
+      });
+    } else if (orderSeen[node.order] === 1) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `Duplicate order ${node.order}`,
+        path: [index, 'order'],
+      });
+    } else {
+      orderSeen[node.order] = 1;
+    }
+  });
 });
 
 export class OrgTreeContractError extends Error {

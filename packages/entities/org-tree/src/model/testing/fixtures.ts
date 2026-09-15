@@ -1,3 +1,5 @@
+import { DEFAULT_ORG_TREE_PARAMS, type OrgTreeParams } from '../params';
+import { orgTreeQuery } from '../query';
 import type { OrgNode } from '../schema';
 
 type Seed = [
@@ -20,7 +22,10 @@ const SEEDS: Seed[] = [
   ['t-3', 'Команда 3', 'p-3', 0, 10, 100],
 ];
 
-/** Небольшое дерево: 2 дивизиона → 3 отдела → 3 команды; порядок намеренно не по имени. */
+/**
+ * Небольшое дерево: 2 дивизиона → 3 отдела → 3 команды; порядок намеренно не по имени.
+ * matches и order — как в ответе без q: order здесь просто позиция в массиве.
+ */
 export function makeOrgNodes(): OrgNode[] {
   return SEEDS.map(([id, name, parentId, headcount, budget, performance], index) => ({
     id,
@@ -30,16 +35,23 @@ export function makeOrgNodes(): OrgNode[] {
     budget,
     performance,
     updatedAt: new Date(Date.UTC(2026, 0, 1 + index)).toISOString(),
+    matches: true,
+    order: index,
   }));
 }
 
-export function stateWith(data: OrgNode[] | undefined) {
+/** Корневой стейт с одной успешной записью кеша для params (или без записей). */
+export function stateWith(
+  data: OrgNode[] | undefined,
+  params: OrgTreeParams = DEFAULT_ORG_TREE_PARAMS,
+) {
+  const key = orgTreeQuery.getKey(params);
   return {
     orgTree: {
-      data,
-      error: undefined,
-      fetchedAt: data ? 1 : undefined,
-      status: data ? ('success' as const) : ('idle' as const),
+      entries: data
+        ? { [key]: { data, error: undefined, fetchedAt: 1, status: 'success' as const } }
+        : {},
+      lastKey: data ? key : undefined,
     },
   };
 }

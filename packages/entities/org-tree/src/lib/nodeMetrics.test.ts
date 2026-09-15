@@ -18,6 +18,8 @@ const node = (
   budget: 0,
   performance,
   updatedAt: '2026-01-01T00:00:00.000Z',
+  matches: true,
+  order: 0,
 });
 
 function itemsOf(nodes: OrgNode[]): Map<string, OrgTreeItem> {
@@ -29,6 +31,7 @@ function itemsOf(nodes: OrgNode[]): Map<string, OrgTreeItem> {
         node: n,
         childCount: nodes.filter((c) => c.parentId === n.id).length,
         subtree: aggregates.get(n.id)!,
+        matches: n.matches,
       },
     ]),
   );

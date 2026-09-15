@@ -1,5 +1,6 @@
 import { createSelector } from '@reduxjs/toolkit';
 import { aggregateSubtrees, type SubtreeAggregate } from './aggregate';
+import type { OrgTreeParams } from './params';
 import { orgTreeQuery } from './query';
 import type { OrgNode } from './schema';
 
@@ -16,6 +17,11 @@ export interface OrgTreeItem {
    * сумма budget, performance, взвешенный по собственному headcount каждого узла.
    */
   subtree: SubtreeAggregate;
+  /**
+   * Совпал ли узел с q запроса (`node.matches`): чтобы UI мог приглушать несовпавшие.
+   * При пустом q — true у всех.
+   */
+  matches: boolean;
 }
 
 /**
@@ -32,17 +38,29 @@ export type ChildrenIndex = ReadonlyMap<string | null, readonly OrgNode[]>;
 
 const EMPTY_NODES: readonly OrgNode[] = [];
 
-const { selectData, selectStatus, selectError, selectIsLoading, selectIsValidating } =
-  orgTreeQuery.selectors;
+const {
+  selectData,
+  selectStatus,
+  selectError,
+  selectIsLoading,
+  selectIsPlaceholder,
+  selectIsValidating,
+} = orgTreeQuery.selectors;
 
-export { selectError, selectIsLoading, selectIsValidating, selectStatus };
+// Все селекторы принимают параметры запроса: состояние и данные — у записи этого ключа
+// (или данные-заглушка предыдущего ключа, см. isPlaceholder).
+export { selectError, selectIsLoading, selectIsPlaceholder, selectIsValidating, selectStatus };
 
-export const selectOrgNodes = (state: OrgTreeRootState): readonly OrgNode[] =>
-  selectData(state) ?? EMPTY_NODES;
+export const selectOrgNodes = (
+  state: OrgTreeRootState,
+  params: OrgTreeParams,
+): readonly OrgNode[] => selectData(state, params) ?? EMPTY_NODES;
 
-export const selectHasData = (state: OrgTreeRootState): boolean => selectData(state) !== undefined;
+export const selectHasData = (state: OrgTreeRootState, params: OrgTreeParams): boolean =>
+  selectData(state, params) !== undefined;
 
-export const selectIsEmpty = (state: OrgTreeRootState): boolean => selectData(state)?.length === 0;
+export const selectIsEmpty = (state: OrgTreeRootState, params: OrgTreeParams): boolean =>
+  selectData(state, params)?.length === 0;
 
 /**
  * parentId → дети (корни — под ключом null). Дети отсортированы по имени: сервер не
@@ -73,9 +91,45 @@ export const selectRootNodes = createSelector(
   (index): readonly OrgNode[] => index.get(null) ?? EMPTY_NODES,
 );
 
+/**
+ * Уровень узла в дереве, 1-based: корни (дивизионы) — 1, их дети — 2. Считается обходом
+ * индекса детей от корней, то есть по той же структуре, что строит дерево.
+ */
+export const selectNodeLevels = createSelector(
+  [selectChildrenIndex],
+  (index): ReadonlyMap<string, number> => {
+    const levels = new Map<string, number>();
+    const stack = (index.get(null) ?? EMPTY_NODES).map((node) => ({ node, level: 1 }));
+    while (stack.length > 0) {
+      const { node, level } = stack.pop()!;
+      levels.set(node.id, level);
+      for (const child of index.get(node.id) ?? EMPTY_NODES) {
+        stack.push({ node: child, level: level + 1 });
+      }
+    }
+    return levels;
+  },
+);
+
 /** Идентификаторы узлов первого уровня (корней). */
 export const selectFirstLevelIds = createSelector([selectRootNodes], (roots) =>
   roots.map((node) => node.id),
+);
+
+/**
+ * Раскрытие по умолчанию — узлы первого уровня: видны дивизионы и отделы, команды скрыты.
+ * Один набор на данные: смена раскрытия и ревалидация с равными данными его не пересоздают.
+ */
+export const selectDefaultExpandedIds = createSelector(
+  [selectFirstLevelIds],
+  (ids): ReadonlySet<string> => new Set(ids),
+);
+
+/** id узла → id родителя: для раскрытия предков. */
+export const selectParentIndex = createSelector(
+  [selectOrgNodes],
+  (nodes): ReadonlyMap<string, string | null> =>
+    new Map(nodes.map((node) => [node.id, node.parentId])),
 );
 
 /** Идентификаторы всех узлов, у которых есть дети: для «Развернуть всё». */
@@ -83,7 +137,11 @@ export const selectExpandableIds = createSelector([selectChildrenIndex], (index)
   [...index.keys()].filter((id): id is string => id !== null),
 );
 
-/** Итоги по поддереву для каждого узла; пересчитываются только при изменении данных. */
+/**
+ * Итоги по поддереву для каждого узла — единственный расчёт итогов, общий для дерева и
+ * таблицы. Зависит только от данных: пересчитывается при смене ссылки на data, но не при
+ * смене раскрытия и не при ревалидации с равными данными (isEqual сохраняет ссылку).
+ */
 export const selectSubtreeAggregates = createSelector([selectOrgNodes], (nodes) =>
   aggregateSubtrees(nodes),
 );
@@ -97,7 +155,8 @@ export const selectVisibleTree = createSelector(
     selectChildrenIndex,
     selectRootNodes,
     selectSubtreeAggregates,
-    (_state: OrgTreeRootState, expandedIds: ReadonlySet<string>) => expandedIds,
+    (_state: OrgTreeRootState, _params: OrgTreeParams, expandedIds: ReadonlySet<string>) =>
+      expandedIds,
   ],
   (index, roots, aggregates, expandedIds): VisibleOrgTreeNode[] => {
     const build = (node: OrgNode): VisibleOrgTreeNode => {
@@ -105,7 +164,12 @@ export const selectVisibleTree = createSelector(
       return {
         id: node.id,
         // Узлы строятся от корней, поэтому агрегат есть у каждого.
-        data: { node, childCount: children.length, subtree: aggregates.get(node.id)! },
+        data: {
+          node,
+          childCount: children.length,
+          subtree: aggregates.get(node.id)!,
+          matches: node.matches,
+        },
         children: expandedIds.has(node.id) ? children.map(build) : [],
       };
     };

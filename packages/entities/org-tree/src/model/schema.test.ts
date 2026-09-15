@@ -25,14 +25,29 @@ describe('orgTreeResponseSchema', () => {
     ['несуществующая дата', { updatedAt: '2026-02-30T00:00:00.000Z' }],
     ['не дата', { updatedAt: 'yesterday' }],
     ['дата без времени', { updatedAt: '2026-01-01' }],
+    ['matches строкой', { matches: 'true' }],
+    ['matches null', { matches: null }],
+    ['order дробный', { order: 0.5 }],
+    ['order отрицательный', { order: -1 }],
+    ['order строкой', { order: '0' }],
   ])('%s — ошибка', (_label, patch) => {
     expect(orgTreeResponseSchema.safeParse(withNode(patch)).success).toBe(false);
   });
 
-  it('отсутствующее поле — ошибка', () => {
+  it.each(['id', 'matches', 'order'])('отсутствующее поле %s — ошибка', (field) => {
     const nodes: Record<string, unknown>[] = makeOrgNodes();
-    delete nodes[3].id;
+    delete nodes[3][field];
     expect(orgTreeResponseSchema.safeParse(nodes).success).toBe(false);
+  });
+
+  it('принимает matches и order: false у части узлов, order в любом порядке массива', () => {
+    const orders = [7, 0, 3, 5, 1, 6, 2, 4];
+    const nodes = makeOrgNodes().map((node, i) => ({
+      ...node,
+      matches: i % 2 === 0,
+      order: orders[i],
+    }));
+    expect(parseOrgTree(nodes)).toEqual(nodes);
   });
 
   it('parentId: null у корня допустим', () => {
@@ -67,6 +82,19 @@ describe('orgTreeResponseSchema', () => {
 
     it('узел — сам себе родитель', () => {
       expect(orgTreeResponseSchema.safeParse(withNode({ parentId: 'd-b' }, 0)).success).toBe(false);
+    });
+
+    it('order с дырой (значение вне 0..n-1) — ошибка', () => {
+      const nodes = withNode({ order: 8 }, 7);
+      const result = orgTreeResponseSchema.safeParse(nodes);
+      expect(result.success).toBe(false);
+      expect(result.error?.issues[0]).toMatchObject({ path: [7, 'order'] });
+    });
+
+    it('повторяющийся order — ошибка', () => {
+      const result = orgTreeResponseSchema.safeParse(withNode({ order: 0 }, 5));
+      expect(result.success).toBe(false);
+      expect(result.error?.issues[0]).toMatchObject({ message: 'Duplicate order 0' });
     });
   });
 

@@ -18,6 +18,17 @@ describe('isSameOrgTree', () => {
     expect(isSameOrgTree(makeOrgNodes(), makeOrgNodes().reverse())).toBe(true);
   });
 
+  it('изменились только matches и order при том же составе и updatedAt — равны', () => {
+    // Другие matches/order при тех же updatedAt приходят только с другими параметрами
+    // запроса, а это другой ключ кеша: ответы разных ключей isEqual не сравнивает.
+    const next = makeOrgNodes().map((node, i, all) => ({
+      ...node,
+      matches: i === 0,
+      order: all.length - 1 - i,
+    }));
+    expect(isSameOrgTree(makeOrgNodes(), next)).toBe(true);
+  });
+
   it('изменён узел (как POST /api/dev/touch) — не равны', () => {
     const next = makeOrgNodes();
     next[3] = { ...next[3], headcount: 99, updatedAt: '2026-09-15T00:00:00.000Z' };

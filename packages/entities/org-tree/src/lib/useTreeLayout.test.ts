@@ -18,6 +18,8 @@ function node(children: VisibleOrgTreeNode[] = []): VisibleOrgTreeNode {
     budget: 1,
     performance: 50,
     updatedAt: '2026-01-01T00:00:00.000Z',
+    matches: true,
+    order: 0,
   };
   return {
     id,
@@ -25,6 +27,7 @@ function node(children: VisibleOrgTreeNode[] = []): VisibleOrgTreeNode {
       node: data,
       childCount: children.length,
       subtree: { headcount: 1, budget: 1, performance: 50 },
+      matches: true,
     },
     children,
   };
