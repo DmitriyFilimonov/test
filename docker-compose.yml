@@ -10,7 +10,8 @@ services:
     # Дефолт из .env.example; .env переопределяет.
     env_file:
       - .env.example
-      - .env
+      - path: .env
+        required: false
     environment:
       STREAM_INTERVAL_MS: ${STREAM_INTERVAL_MS:-5000}
     ports:
