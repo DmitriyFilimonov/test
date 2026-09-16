@@ -1,5 +1,6 @@
 import { createSelector } from '@reduxjs/toolkit';
-import { aggregateSubtrees, type SubtreeAggregate } from './aggregate';
+import type { AggregateIndex, SubtreeAggregate } from './aggregate';
+import { getAggregateIndex } from './aggregateIndex';
 import type { OrgTreeParams } from './params';
 import { orgTreeQuery } from './query';
 import type { OrgNode } from './schema';
@@ -34,6 +35,11 @@ export interface VisibleOrgTreeNode {
   children: VisibleOrgTreeNode[];
 }
 
+/**
+ * parentId → дети. Индекс структуры: из узлов читаются id, parentId и name. Метрики, order и
+ * matches могут быть от прежних данных той же структуры (см. selectStructure) — актуальный
+ * узел берётся из selectOrgNodes.
+ */
 export type ChildrenIndex = ReadonlyMap<string | null, readonly OrgNode[]>;
 
 const EMPTY_NODES: readonly OrgNode[] = [];
@@ -51,6 +57,16 @@ const {
 // (или данные-заглушка предыдущего ключа, см. isPlaceholder).
 export { selectError, selectIsLoading, selectIsPlaceholder, selectIsValidating, selectStatus };
 
+const toSubtreeAggregate = (entry: {
+  headcount: number;
+  budget: number;
+  performance: number | null;
+}): SubtreeAggregate => ({
+  headcount: entry.headcount,
+  budget: entry.budget,
+  performance: entry.performance,
+});
+
 export const selectOrgNodes = (
   state: OrgTreeRootState,
   params: OrgTreeParams,
@@ -62,11 +78,39 @@ export const selectHasData = (state: OrgTreeRootState, params: OrgTreeParams): b
 export const selectIsEmpty = (state: OrgTreeRootState, params: OrgTreeParams): boolean =>
   selectData(state, params)?.length === 0;
 
+/** Та же структура: те же id, parentId и name на тех же местах. */
+function isSameStructure(a: readonly OrgNode[], b: readonly OrgNode[]): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+  for (let i = 0; i < a.length; i++) {
+    if (a[i].id !== b[i].id || a[i].parentId !== b[i].parentId || a[i].name !== b[i].name) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Данные как источник структуры: при той же структуре — прежняя ссылка на массив. Патч метрик
+ * не пересобирает индексы детей и родителей, и хуки структуры (раскрытие на странице) не
+ * перерисовывают своих владельцев на каждое изменение численности.
+ */
+const selectStructure = createSelector([selectOrgNodes], (nodes) => nodes, {
+  memoizeOptions: { resultEqualityCheck: isSameStructure },
+  devModeChecks: { identityFunctionCheck: 'never' },
+});
+
+const selectNodeById = createSelector(
+  [selectOrgNodes],
+  (nodes): ReadonlyMap<string, OrgNode> => new Map(nodes.map((node) => [node.id, node])),
+);
+
 /**
  * parentId → дети (корни — под ключом null). Дети отсортированы по имени: сервер не
  * гарантирует порядок, а раскладка и навигация должны быть стабильными.
  */
-export const selectChildrenIndex = createSelector([selectOrgNodes], (nodes): ChildrenIndex => {
+export const selectChildrenIndex = createSelector([selectStructure], (nodes): ChildrenIndex => {
   const index = new Map<string | null, OrgNode[]>();
   for (const node of nodes) {
     const siblings = index.get(node.parentId);
@@ -127,7 +171,7 @@ export const selectDefaultExpandedIds = createSelector(
 
 /** id узла → id родителя: для раскрытия предков. */
 export const selectParentIndex = createSelector(
-  [selectOrgNodes],
+  [selectStructure],
   (nodes): ReadonlyMap<string, string | null> =>
     new Map(nodes.map((node) => [node.id, node.parentId])),
 );
@@ -140,10 +184,11 @@ export const selectExpandableIds = createSelector([selectChildrenIndex], (index)
 /**
  * Итоги по поддереву для каждого узла — единственный расчёт итогов, общий для дерева и
  * таблицы. Зависит только от данных: пересчитывается при смене ссылки на data, но не при
- * смене раскрытия и не при ревалидации с равными данными (isEqual сохраняет ссылку).
+ * смене раскрытия и не при ревалидации с равными данными (isEqual сохраняет ссылку). Данные
+ * после патча потока приходят с готовым индексом (liveSaga): полного расчёта на патч нет.
  */
-export const selectSubtreeAggregates = createSelector([selectOrgNodes], (nodes) =>
-  aggregateSubtrees(nodes),
+export const selectSubtreeAggregates = createSelector([selectOrgNodes], (nodes): AggregateIndex =>
+  getAggregateIndex(nodes),
 );
 
 /**
@@ -154,20 +199,23 @@ export const selectVisibleTree = createSelector(
   [
     selectChildrenIndex,
     selectRootNodes,
+    selectNodeById,
     selectSubtreeAggregates,
     (_state: OrgTreeRootState, _params: OrgTreeParams, expandedIds: ReadonlySet<string>) =>
       expandedIds,
   ],
-  (index, roots, aggregates, expandedIds): VisibleOrgTreeNode[] => {
-    const build = (node: OrgNode): VisibleOrgTreeNode => {
-      const children = index.get(node.id) ?? EMPTY_NODES;
+  (index, roots, nodeById, aggregates, expandedIds): VisibleOrgTreeNode[] => {
+    const build = ({ id }: OrgNode): VisibleOrgTreeNode => {
+      // Узел — из актуальных данных: индекс структуры может хранить узлы прежних данных.
+      const node = nodeById.get(id)!;
+      const children = index.get(id) ?? EMPTY_NODES;
       return {
         id: node.id,
         // Узлы строятся от корней, поэтому агрегат есть у каждого.
         data: {
           node,
           childCount: children.length,
-          subtree: aggregates.get(node.id)!,
+          subtree: toSubtreeAggregate(aggregates.get(node.id)!),
           matches: node.matches,
         },
         children: expandedIds.has(node.id) ? children.map(build) : [],

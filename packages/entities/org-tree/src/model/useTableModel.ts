@@ -1,10 +1,11 @@
 import type { SerializedError } from '@reduxjs/toolkit';
 import { useCallback, useEffect, useEffectEvent, useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
-import { useOrgTree } from './hooks';
+import { useOrgTree, useOrgTreeUpdates } from './hooks';
 import type { OrgTreeParams, OrgTreeSortColumn, OrgTreeSortDirection } from './params';
 import type { OrgTreeRootState } from './selectors';
 import { selectTableRows, type OrgTableSortColumn, type TableRow } from './table';
+import type { OrgTreeUpdatesState } from './updates';
 
 /** Пауза ввода, после которой текст поля уходит в параметры запроса. */
 export const TABLE_QUERY_DEBOUNCE_MS = 250;
@@ -25,6 +26,11 @@ export interface TableModel {
    * Сгруппированы по иерархии, см. `selectTableRows`.
    */
   rows: readonly TableRow[];
+  /**
+   * Номера патчей, изменивших значения узлов, по id. Отдельно от строк: строки пересчитываются
+   * от данных, а номера приходят своим экшеном.
+   */
+  updates: OrgTreeUpdatesState;
   sort: OrgTreeSortColumn;
   dir: OrgTreeSortDirection;
   /** Показать нечего, и ошибки нет: запрос идёт или вот-вот начнётся. */
@@ -60,6 +66,7 @@ export function useTableModel({ params, onParamsChange }: UseTableModelOptions):
   const { status, error, hasData, isEmpty, isValidating, isPlaceholder, retry } =
     useOrgTree(params);
   const rows = useOrgTreeSelector((state) => selectTableRows(state, params));
+  const updates = useOrgTreeUpdates();
 
   const [draftQuery, setDraftQuery] = useState(params.q);
   // q из прошлого рендера — чтобы заметить, что params.q изменился, — и q, отправленное хуком
@@ -112,6 +119,7 @@ export function useTableModel({ params, onParamsChange }: UseTableModelOptions):
   return useMemo(
     () => ({
       rows,
+      updates,
       sort: params.sort,
       dir: params.dir,
       isLoading: !hasData && status !== 'error',
@@ -128,6 +136,7 @@ export function useTableModel({ params, onParamsChange }: UseTableModelOptions):
     }),
     [
       rows,
+      updates,
       params.sort,
       params.dir,
       status,

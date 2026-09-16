@@ -1,6 +1,9 @@
 import { Fragment, memo } from 'react';
 import styled from 'styled-components';
-import { getMetricRows, type PerformanceIndicator } from '../lib/nodeMetrics';
+import { getMetricRows, type MetricRow, type PerformanceIndicator } from '../lib/nodeMetrics';
+import { useFreshUpdates } from '../model/useFreshUpdates';
+import type { UpdatableMetric } from '../model/updates';
+import { updateHighlight } from './updateHighlight';
 
 /*
  * Цвета performance заданы статическими правилами по data-атрибутам: по пять диапазонов
@@ -156,7 +159,19 @@ const Value = styled.dd`
   margin: 0;
   color: ${({ theme }) => theme.colors.text};
   font-variant-numeric: tabular-nums;
+
+  ${updateHighlight}
 `;
+
+/** Какое значение показывает строка карточки: у листа общие значения равны собственным. */
+const ROW_METRICS: Record<MetricRow['key'], Exclude<UpdatableMetric, 'totalBudget'>> = {
+  headcount: 'ownHeadcount',
+  performance: 'totalPerformance',
+  'own-headcount': 'ownHeadcount',
+  'total-headcount': 'totalHeadcount',
+  'own-performance': 'ownPerformance',
+  'total-performance': 'totalPerformance',
+};
 
 const OwnIndicator = styled.span`
   width: 8px;
@@ -185,6 +200,11 @@ export interface OrgNodeCardProps {
   selected: boolean;
   /** Приглушить: узел не совпал с фильтром, а таблица на экране. */
   dimmed: boolean;
+  /** Номер патча, последним изменившего значение; нет — значение патчами не менялось. */
+  ownHeadcountUpdate?: number;
+  totalHeadcountUpdate?: number;
+  ownPerformanceUpdate?: number;
+  totalPerformanceUpdate?: number;
 }
 
 /**
@@ -193,6 +213,8 @@ export interface OrgNodeCardProps {
  * Только примитивные пропсы: при раскрытии другого узла React.memo пропускает перерисовку.
  * Координаты сюда не приходят — позицию задаёт холст.
  * Клики обрабатывает один делегированный слушатель дерева по data-id / data-chevron.
+ * Значение, изменённое патчем после монтирования карточки, подсвечивается так же, как ячейка
+ * таблицы (`updateHighlight`).
  */
 export const OrgNodeCard = memo(function OrgNodeCard({
   id,
@@ -209,7 +231,17 @@ export const OrgNodeCard = memo(function OrgNodeCard({
   height,
   selected,
   dimmed,
+  ownHeadcountUpdate,
+  totalHeadcountUpdate,
+  ownPerformanceUpdate,
+  totalPerformanceUpdate,
 }: OrgNodeCardProps) {
+  const fresh = useFreshUpdates({
+    ownHeadcount: ownHeadcountUpdate,
+    totalHeadcount: totalHeadcountUpdate,
+    ownPerformance: ownPerformanceUpdate,
+    totalPerformance: totalPerformanceUpdate,
+  });
   const rows = getMetricRows(
     {
       ownHeadcount,
@@ -246,16 +278,19 @@ export const OrgNodeCard = memo(function OrgNodeCard({
           )}
         </Header>
         <Metrics>
-          {rows.map((row) => (
-            <Fragment key={row.key}>
-              <Label>{row.label}</Label>
-              <Value data-metric={row.key}>
-                {row.indicator === 'own' && <OwnIndicator aria-hidden="true" />}
-                {row.indicator === 'total' && <TotalIndicator aria-hidden="true" />}
-                {row.value}
-              </Value>
-            </Fragment>
-          ))}
+          {rows.map((row) => {
+            const update = fresh[ROW_METRICS[row.key]];
+            return (
+              <Fragment key={row.key}>
+                <Label>{row.label}</Label>
+                <Value key={update} data-metric={row.key} data-updated={update}>
+                  {row.indicator === 'own' && <OwnIndicator aria-hidden="true" />}
+                  {row.indicator === 'total' && <TotalIndicator aria-hidden="true" />}
+                  {row.value}
+                </Value>
+              </Fragment>
+            );
+          })}
         </Metrics>
       </Card>
     </foreignObject>

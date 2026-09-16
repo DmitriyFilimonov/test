@@ -25,7 +25,10 @@ const levelOf = (value: number | null): PerformanceIndicator =>
  * общая численность = собственные + общие у детей, общая эффективность взвешена по
  * собственным сотрудникам каждого узла.
  */
-export function getNodeMetrics({ node, subtree }: OrgTreeItem): NodeMetrics {
+export function getNodeMetrics<TItem extends Pick<OrgTreeItem, 'node' | 'subtree'>>({
+  node,
+  subtree,
+}: TItem): NodeMetrics {
   const ownPerformance = node.headcount > 0 ? node.performance : null;
   const totalPerformance = subtree.performance === null ? null : Math.round(subtree.performance);
   return {

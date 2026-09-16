@@ -22,8 +22,14 @@ export interface AppTheme {
     edge: string;
     skeleton: string;
     danger: string;
+    /** Состояние «работает» (соединение открыто). Не единственный признак: рядом всегда текст. */
+    success: string;
+    /** Состояние «восстанавливается» (переподключение). Не единственный признак: рядом текст. */
+    warning: string;
     /** Фон выбранной строки таблицы (не единственный признак выбора: есть ещё маркер). */
     selected: string;
+    /** Фон значения, только что обновлённого патчем; гаснет за motion.updateHighlight. */
+    updated: string;
     performance: Record<PerformanceLevel, string>;
     /** Индикатор, когда performance не определён (в подразделении 0 человек). */
     performanceNone: string;
@@ -54,6 +60,14 @@ export interface AppTheme {
     rowHeight: string;
     /** Сколько строк рисует скелетон, пока данных нет. */
     skeletonRows: number;
+  };
+  motion: {
+    /** Сколько гаснет подсветка обновлённого значения (CSS-время). */
+    updateHighlight: string;
+    /** Появление и исчезновение узлов и рёбер дерева при раскрытии (CSS-время). */
+    treeTransition: string;
+    /** Кривая появления и исчезновения узлов дерева (CSS easing). */
+    treeEasing: string;
   };
   fontSizes: {
     sm: string;
@@ -88,7 +102,10 @@ export const theme: AppTheme = {
     edge: '#8c959f',
     skeleton: '#eaeef2',
     danger: '#cf222e',
+    success: '#1a7f37',
+    warning: '#9a6700',
     selected: '#ddf4ff',
+    updated: '#fff8c5',
     performance: {
       critical: '#cf222e',
       low: '#e16f24',
@@ -113,6 +130,11 @@ export const theme: AppTheme = {
   table: {
     rowHeight: '36px',
     skeletonRows: 10,
+  },
+  motion: {
+    updateHighlight: '1.5s',
+    treeTransition: '200ms',
+    treeEasing: 'cubic-bezier(0.2, 0, 0, 1)',
   },
   fontSizes: {
     sm: '12px',

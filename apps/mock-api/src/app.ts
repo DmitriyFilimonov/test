@@ -1,8 +1,15 @@
-import { randomInt } from 'node:crypto';
 import express from 'express';
 import { sendJsonWithEtag } from './http-cache';
+import {
+  addLeaf,
+  deleteRandomLeaf,
+  touchRandomNode,
+  updateRandomLeaf,
+  type ChangeResult,
+} from './org-tree-changes';
 import { generateOrgTree, makeContractViolatingPayload, type OrgNode } from './org-tree-data';
 import { buildOrgTreeResponse, parseOrgTreeParams } from './org-tree-query';
+import { createStreamHub } from './org-tree-stream';
 
 const MAX_DELAY_MS = 60_000;
 const SCENARIOS = ['empty', 'error', 'invalid'] as const;
@@ -11,11 +18,22 @@ type Scenario = (typeof SCENARIOS)[number];
 const TOUCH_MODES = ['update', 'delete'] as const;
 type TouchMode = (typeof TOUCH_MODES)[number];
 
+const EMIT_MODES = ['update', 'add', 'delete'] as const;
+type EmitMode = (typeof EMIT_MODES)[number];
+
+const DEFAULT_STREAM_INTERVAL_MS = 5000;
+const MIN_STREAM_INTERVAL_MS = 10;
+const MAX_STREAM_INTERVAL_MS = 3_600_000;
+
 export interface AppOptions {
   /** Начальные данные. По умолчанию — детерминированный генератор. */
   nodes?: readonly OrgNode[];
   /** Писать каждый запрос в консоль. */
   log?: boolean;
+  /** Интервал heartbeat потока, мс. По умолчанию 20 с. */
+  heartbeatMs?: number;
+  /** Интервал генерации, если POST /api/dev/stream/start пришёл без intervalMs. По умолчанию 5 с. */
+  streamIntervalMs?: number;
 }
 
 /**
@@ -43,9 +61,31 @@ function devParams(req: express.Request): { scenario: unknown; delay: unknown } 
   }
 }
 
-export function createApp({ nodes: initialNodes, log = false }: AppOptions = {}) {
-  /** Состояние в памяти. Перезапуск возвращает данные к сиду; меняет их только POST /api/dev/touch. */
+export function createApp({
+  nodes: initialNodes,
+  log = false,
+  heartbeatMs,
+  streamIntervalMs = DEFAULT_STREAM_INTERVAL_MS,
+}: AppOptions = {}) {
+  /**
+   * Состояние в памяти. Перезапуск возвращает данные к сиду; меняют их только дев-ручки
+   * (touch, stream/emit и генерация после stream/start).
+   */
   let nodes: readonly OrgNode[] = initialNodes ?? generateOrgTree();
+  const hub = createStreamHub({ heartbeatMs });
+  /** Генерация изменений. Выключена по умолчанию: данные детерминированы, пока её не включат. */
+  let generator: NodeJS.Timeout | undefined;
+
+  /** Применяет изменение к данным и рассылает патч подписчикам. */
+  const commit = (result: NonNullable<ChangeResult>) => {
+    nodes = result.nodes;
+    return hub.publish(result.change);
+  };
+
+  const stopGenerator = () => {
+    clearInterval(generator);
+    generator = undefined;
+  };
 
   const app = express();
   app.disable('x-powered-by');
@@ -55,7 +95,8 @@ export function createApp({ nodes: initialNodes, log = false }: AppOptions = {})
   if (log) {
     app.use((req, res, next) => {
       const startedAt = performance.now();
-      res.on('finish', () => {
+      // close, а не finish: поток событий не завершается штатно, его закрывает клиент или kill.
+      res.on('close', () => {
         const ms = Math.round(performance.now() - startedAt);
         console.log(`${req.method} ${req.originalUrl} -> ${res.statusCode} (${ms} ms)`);
       });
@@ -117,7 +158,7 @@ export function createApp({ nodes: initialNodes, log = false }: AppOptions = {})
    * mode=update (по умолчанию) — меняет headcount и updatedAt ровно одного случайного узла.
    * mode=delete — удаляет один случайный лист, остальные узлы не трогает. Удаляется только
    * лист: иначе у детей остался бы parentId на несуществующий узел, а это уже нарушение
-   * контракта (для него есть scenario=invalid).
+   * контракта (для него есть scenario=invalid). Изменение рассылается патчем подписчикам потока.
    */
   app.post('/api/dev/touch', (req, res) => {
     const { mode = 'update' } = req.query;
@@ -126,36 +167,103 @@ export function createApp({ nodes: initialNodes, log = false }: AppOptions = {})
       return;
     }
 
+    const previous = nodes;
+    const result = mode === 'delete' ? deleteRandomLeaf(nodes) : touchRandomNode(nodes);
+    if (!result) {
+      res.status(409).json({ error: 'No nodes left to change' });
+      return;
+    }
+    commit(result);
+
     if (mode === 'delete') {
-      const parentIds = new Set(nodes.map((node) => node.parentId));
-      const leafIndexes = nodes.flatMap((node, index) => (parentIds.has(node.id) ? [] : [index]));
-      if (leafIndexes.length === 0) {
-        res.status(409).json({ error: 'No nodes left to delete' });
-        return;
-      }
-      const index = leafIndexes[randomInt(leafIndexes.length)];
-      const deleted = nodes[index];
-      nodes = nodes.toSpliced(index, 1);
+      const deleted = previous.find((node) => node.id === result.change.removed[0]);
       res.json({ mode, deleted });
       return;
     }
+    const id = result.change.nodes[0].id;
+    res.json({
+      mode,
+      before: previous.find((node) => node.id === id),
+      after: nodes.find((node) => node.id === id),
+    });
+  });
 
-    const index = randomInt(nodes.length);
-    const before = nodes[index];
-    const delta = randomInt(1, 4);
-    const headcount =
-      before.headcount - delta >= 1 && randomInt(2) === 0
-        ? before.headcount - delta
-        : before.headcount + delta;
-    const after: OrgNode = { ...before, headcount, updatedAt: new Date().toISOString() };
+  /**
+   * GET /api/org-tree/stream — Server-Sent Events. Сразу `hello` с текущим seq, затем
+   * `patch` на каждое изменение данных и комментарий-heartbeat раз в 20 с.
+   */
+  app.get('/api/org-tree/stream', (req, res) => {
+    hub.connect(req, res);
+  });
 
-    nodes = nodes.with(index, after);
-    res.json({ mode, before, after });
+  /** Один патч немедленно. mode=update (по умолчанию) — структура дерева та же. */
+  app.post('/api/dev/stream/emit', (req, res) => {
+    const { mode = 'update' } = req.query;
+    if (!EMIT_MODES.includes(mode as EmitMode)) {
+      res.status(400).json({ error: `Unknown mode. Expected one of: ${EMIT_MODES.join(', ')}` });
+      return;
+    }
+    const change = { update: updateRandomLeaf, add: addLeaf, delete: deleteRandomLeaf }[
+      mode as EmitMode
+    ];
+    const result = change(nodes);
+    if (!result) {
+      res.status(409).json({ error: 'No nodes left to change' });
+      return;
+    }
+    res.json(commit(result));
+  });
+
+  /**
+   * Генерация: headcount и performance случайного листа раз в intervalMs (по умолчанию 5 с).
+   * Повторный start меняет интервал.
+   */
+  app.post('/api/dev/stream/start', (req, res) => {
+    const { intervalMs } = req.query;
+    if (
+      intervalMs !== undefined &&
+      (typeof intervalMs !== 'string' ||
+        !/^\d+$/.test(intervalMs) ||
+        Number(intervalMs) < MIN_STREAM_INTERVAL_MS ||
+        Number(intervalMs) > MAX_STREAM_INTERVAL_MS)
+    ) {
+      res.status(400).json({
+        error: `intervalMs must be an integer from ${MIN_STREAM_INTERVAL_MS} to ${MAX_STREAM_INTERVAL_MS}`,
+      });
+      return;
+    }
+    const interval = intervalMs === undefined ? streamIntervalMs : Number(intervalMs);
+    stopGenerator();
+    generator = setInterval(() => {
+      const result = updateRandomLeaf(nodes);
+      if (result) {
+        commit(result);
+      }
+    }, interval);
+    res.json({ running: true, intervalMs: interval });
+  });
+
+  app.post('/api/dev/stream/stop', (_req, res) => {
+    stopGenerator();
+    res.json({ running: false });
+  });
+
+  /** Закрывает все открытые потоки без прощального события: клиент видит обрыв. */
+  app.post('/api/dev/stream/kill', (_req, res) => {
+    res.json({ closed: hub.kill() });
   });
 
   app.use('/api', (_req, res) => {
     res.status(404).json({ error: 'Not found' });
   });
 
-  return { app, getNodes: () => nodes };
+  return {
+    app,
+    getNodes: () => nodes,
+    /** Останавливает генерацию и закрывает потоки: иначе server.close() ждал бы их вечно. */
+    dispose: () => {
+      stopGenerator();
+      hub.kill();
+    },
+  };
 }

@@ -22,11 +22,12 @@ const TreeArea = styled.div`
  */
 export function OrgTreeView(props: OrgTreeViewProps) {
   const model = useTreeModel(props);
-  const { expandedIds, selectedId, dimUnmatched } = model;
+  const { expandedIds, selectedId, dimUnmatched, updates } = model;
 
   const renderNode = useCallback(
     (node: LayoutNode<OrgTreeItem>) => {
       const metrics = getNodeMetrics(node.data);
+      const nodeUpdates = updates[node.id];
       return (
         <OrgNodeCard
           id={node.id}
@@ -43,10 +44,14 @@ export function OrgTreeView(props: OrgTreeViewProps) {
           height={node.height}
           selected={node.id === selectedId}
           dimmed={dimUnmatched && !node.data.matches}
+          ownHeadcountUpdate={nodeUpdates?.ownHeadcount}
+          totalHeadcountUpdate={nodeUpdates?.totalHeadcount}
+          ownPerformanceUpdate={nodeUpdates?.ownPerformance}
+          totalPerformanceUpdate={nodeUpdates?.totalPerformance}
         />
       );
     },
-    [expandedIds, selectedId, dimUnmatched],
+    [expandedIds, selectedId, dimUnmatched, updates],
   );
 
   let content;

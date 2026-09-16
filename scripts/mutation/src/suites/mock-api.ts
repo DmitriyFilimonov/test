@@ -62,3 +62,81 @@ export const mockApiOrgTreeQuerySuite: Suite = {
     },
   ],
 };
+
+const STREAM_TESTS = 'apps/mock-api/src/org-tree-stream.test.ts';
+
+export const mockApiStreamHubSuite: Suite = {
+  name: 'mock-api-stream-hub',
+  file: 'apps/mock-api/src/org-tree-stream.ts',
+  tests: STREAM_TESTS,
+  mutations: [
+    {
+      name: 'hello без текущего seq',
+      from: "res.write(frame('hello', { seq }));",
+      to: "res.write(frame('hello', { seq: 0 }));",
+    },
+    {
+      name: 'seq не растёт',
+      from: '    seq += 1;\n',
+      to: '',
+    },
+    {
+      name: 'патч уходит только первому подписчику',
+      from: '    for (const res of clients) {\n      res.write(text);\n    }',
+      to: '    clients.values().next().value?.write(text);',
+    },
+    {
+      name: 'нет heartbeat',
+      from: "const heartbeat = setInterval(() => res.write(': ping\\n\\n'), heartbeatMs);",
+      to: 'const heartbeat = undefined;',
+    },
+    {
+      name: 'heartbeat событием, а не комментарием',
+      from: "res.write(': ping\\n\\n')",
+      to: "res.write('event: ping\\ndata: {}\\n\\n')",
+    },
+    {
+      name: 'отключившийся клиент не снимается с рассылки',
+      from: '      clients.delete(res);\n    });',
+      to: '    });',
+    },
+    {
+      name: 'kill не закрывает соединения',
+      from: '      res.socket?.destroy();\n',
+      to: '',
+    },
+  ],
+};
+
+export const mockApiStreamRoutesSuite: Suite = {
+  name: 'mock-api-stream-routes',
+  file: 'apps/mock-api/src/app.ts',
+  tests: STREAM_TESTS,
+  mutations: [
+    {
+      name: 'генерация включена по умолчанию',
+      from: '  let generator: NodeJS.Timeout | undefined;\n',
+      to: '  let generator: NodeJS.Timeout | undefined = setInterval(() => {\n    const result = updateRandomLeaf(nodes);\n    if (result) {\n      commit(result);\n    }\n  }, streamIntervalMs);\n',
+    },
+    {
+      name: 'touch не рассылает патч',
+      from: '    commit(result);\n\n    if (mode === ',
+      to: '    nodes = result.nodes;\n\n    if (mode === ',
+    },
+    {
+      name: 'stop не останавливает генерацию',
+      from: "app.post('/api/dev/stream/stop', (_req, res) => {\n    stopGenerator();",
+      to: "app.post('/api/dev/stream/stop', (_req, res) => {",
+    },
+    {
+      name: 'emit по умолчанию меняет структуру (add)',
+      from: "const { mode = 'update' } = req.query;\n    if (!EMIT_MODES",
+      to: "const { mode = 'add' } = req.query;\n    if (!EMIT_MODES",
+    },
+    {
+      name: 'генерация меняет структуру дерева',
+      from: '    generator = setInterval(() => {\n      const result = updateRandomLeaf(nodes);',
+      to: '    generator = setInterval(() => {\n      const result = addLeaf(nodes);',
+    },
+  ],
+};

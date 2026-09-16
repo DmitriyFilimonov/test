@@ -6,10 +6,11 @@ import createSagaMiddleware from 'redux-saga';
 import { ThemeProvider } from 'styled-components';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { OrgNode } from '../model/schema';
-import { orgTreeSaga, orgTreeSlice } from '../model/store';
+import { orgTreeSaga, orgTreeSlice, orgTreeUpdatesSlice } from '../model/store';
 import { makeOrgNodes } from '../model/testing/fixtures';
 import type { OrgTreeViewProps } from '../model/useTreeModel';
 import { OrgTreeView } from './OrgTreeView';
+import { declared, REDUCED_MOTION } from './testing/declared';
 
 /**
  * Дерево на реальном сторе с сагой; fetch отвечает сразу. Фикстура: «Дивизион Б» → «Отдел 1»
@@ -22,7 +23,7 @@ function renderTree(props: OrgTreeViewProps = {}, nodes: OrgNode[] = makeOrgNode
   );
   const sagaMiddleware = createSagaMiddleware();
   const store = configureStore({
-    reducer: combineSlices(orgTreeSlice),
+    reducer: combineSlices(orgTreeSlice, orgTreeUpdatesSlice),
     middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(sagaMiddleware),
   });
   sagaMiddleware.run(orgTreeSaga);
@@ -48,20 +49,20 @@ function renderTree(props: OrgTreeViewProps = {}, nodes: OrgNode[] = makeOrgNode
 // eslint-disable-next-line no-restricted-globals
 const opacity = (element: Element) => getComputedStyle(element).opacity;
 
-describe('OrgTreeView', () => {
-  beforeEach(() => {
-    vi.stubGlobal(
-      'ResizeObserver',
-      class {
-        observe() {}
-        disconnect() {}
-      },
-    );
-  });
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
+beforeEach(() => {
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      disconnect() {}
+    },
+  );
+});
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
+describe('OrgTreeView', () => {
   it('без пропа expandedIds работает автономно: первый уровень раскрыт, шевроны и кнопки меняют раскрытие', async () => {
     const { visibleIds } = renderTree();
     await screen.findByLabelText('Оргструктура');
@@ -224,5 +225,146 @@ describe('OrgTreeView', () => {
     // Тот же nonce — запрос уже выполнен, холст не двигается.
     show({ id: 'd-a', nonce: 3 });
     expect(view()).toEqual(settled);
+  });
+});
+
+/** Числа из атрибута transform: translate(x y) → [x, y]. */
+const translate = (element: Element) =>
+  (element.getAttribute('transform') ?? '').match(/-?[\d.]+/g)!.map(Number);
+
+describe('OrgTreeView: появление и исчезновение узлов', () => {
+  /** Группы узла: место (внешняя), угол якоря (средняя), анимируемая (внутренняя). */
+  function groups(container: HTMLElement, id: string) {
+    const outer = container.querySelector(`[data-node-id="${id}"], [data-exiting-id="${id}"]`);
+    const middle = outer?.firstElementChild;
+    return { outer, middle, inner: middle?.firstElementChild };
+  }
+  const motions = (container: HTMLElement, selector: string) =>
+    [...container.querySelectorAll(`${selector}[data-motion]`)].map((element) =>
+      element.getAttribute('data-motion'),
+    );
+
+  it('раскрытие: новые узлы и рёбра появляются из родителя, прежние — без анимации; клик во время появления работает', async () => {
+    const onSelect = vi.fn();
+    const { container } = renderTree({ onSelect });
+    await screen.findByLabelText('Оргструктура');
+    // Первые данные на холсте — без анимации.
+    expect(container.querySelectorAll('[data-motion]')).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Развернуть: Отдел 1' }));
+
+    const parent = groups(container, 'p-1');
+    const child = groups(container, 't-1');
+    expect(child.inner!.getAttribute('data-motion')).toBe('enter');
+    expect(groups(container, 't-2').inner!.getAttribute('data-motion')).toBe('enter');
+    expect(parent.inner!.hasAttribute('data-motion')).toBe(false);
+    expect(motions(container, 'g')).toEqual(['enter', 'enter']);
+    expect(motions(container, 'path')).toEqual(['enter', 'enter']);
+    // Узел стоит на своём месте; средняя группа — угол родителя, внутренняя возвращает на место.
+    const [x, y] = translate(child.outer!);
+    const [px, py] = translate(parent.outer!);
+    expect(translate(child.middle!)).toEqual([px! - x!, py! - y!]);
+    expect(translate(child.inner!)).toEqual([x! - px!, y! - py!]);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Команда 1' }));
+    expect(onSelect).toHaveBeenCalledWith('t-1');
+  });
+
+  it('сворачивание: узел уходит в родителя, скрыт от скринридера и удаляется из DOM после своей анимации', async () => {
+    const { container, visibleIds } = renderTree({ defaultExpandedIds: new Set(['d-b', 'p-1']) });
+    await screen.findByLabelText('Оргструктура');
+    const edges = () => container.querySelectorAll('path').length;
+    // Дивизион Б → два отдела, Отдел 1 → две команды.
+    expect(edges()).toBe(4);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Свернуть: Отдел 1' }));
+
+    // Раскладка — сразу без команд; сами команды ещё на холсте и исчезают.
+    expect(visibleIds()).toEqual(['d-a', 'd-b', 'p-1', 'p-2']);
+    const leaving = groups(container, 't-1');
+    expect(leaving.outer!.getAttribute('data-exiting-id')).toBe('t-1');
+    expect(leaving.outer!.getAttribute('aria-hidden')).toBe('true');
+    expect(leaving.inner!.getAttribute('data-motion')).toBe('exit');
+    expect(motions(container, 'path')).toEqual(['exit', 'exit']);
+    expect(screen.queryByRole('button', { name: 'Команда 1' })).toBeNull();
+    const [x, y] = translate(leaving.outer!);
+    const [px, py] = translate(groups(container, 'p-1').outer!);
+    expect(translate(leaving.middle!)).toEqual([px! - x!, py! - y!]);
+
+    // Закончилась анимация вложенного элемента (подсветка значения) — узел остаётся.
+    fireEvent.animationEnd(leaving.outer!.querySelector('[data-metric]')!);
+    expect(groups(container, 't-1').outer).toBe(leaving.outer);
+
+    fireEvent.animationEnd(leaving.inner!);
+    expect(groups(container, 't-1').outer).toBeNull();
+    expect(groups(container, 't-2').outer).not.toBeNull();
+    expect(edges()).toBe(3);
+
+    fireEvent.animationEnd(groups(container, 't-2').inner!);
+    expect(container.querySelectorAll('[data-exiting-id], [data-motion="exit"]')).toHaveLength(0);
+    expect(edges()).toBe(2);
+  });
+
+  it('быстрая серия: вернувшийся до конца исчезновения узел — тот же элемент, анимации не копятся', async () => {
+    const { container, visibleIds } = renderTree({ defaultExpandedIds: new Set(['d-b', 'p-1']) });
+    await screen.findByLabelText('Оргструктура');
+    const node = groups(container, 't-1');
+    const chevron = /^(Свернуть|Развернуть): Отдел 1$/;
+    const toggle = () => fireEvent.click(screen.getByRole('button', { name: chevron }));
+
+    for (let i = 0; i < 5; i++) {
+      toggle();
+    }
+    expect(groups(container, 't-1').outer).toBe(node.outer);
+    expect(groups(container, 't-1').inner).toBe(node.inner);
+    // Пять переключений от раскрытого: команды исчезают, по одному элементу на команду.
+    expect(container.querySelectorAll('[data-exiting-id]')).toHaveLength(2);
+
+    toggle();
+    expect(visibleIds()).toEqual(['d-a', 'd-b', 'p-1', 'p-2', 't-1', 't-2']);
+    expect(container.querySelectorAll('[data-exiting-id]')).toHaveLength(0);
+    expect(container.querySelectorAll('g[data-motion]')).toHaveLength(2);
+    expect(container.querySelectorAll('path')).toHaveLength(4);
+    expect(node.inner!.getAttribute('data-motion')).toBe('enter');
+    expect(translate(node.middle!)).toEqual([
+      translate(groups(container, 'p-1').outer!)[0]! - translate(node.outer!)[0]!,
+      translate(groups(container, 'p-1').outer!)[1]! - translate(node.outer!)[1]!,
+    ]);
+
+    // Опоздавший конец прежнего исчезновения вернувшийся узел не удаляет.
+    fireEvent.animationEnd(node.inner!);
+    expect(groups(container, 't-1').outer).toBe(node.outer);
+  });
+
+  it('prefers-reduced-motion: появление и исчезновение без анимации, длительность — из темы вне media', async () => {
+    const { container } = renderTree({ defaultExpandedIds: new Set(['d-a', 'd-b']) });
+    await screen.findByLabelText('Оргструктура');
+    // Команды Отдела 1 появляются, Отдел 3 исчезает.
+    fireEvent.click(screen.getByRole('button', { name: 'Развернуть: Отдел 1' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Свернуть: Дивизион А' }));
+
+    const entering = [
+      groups(container, 't-1').inner!,
+      container.querySelector('path[data-motion="enter"]')!,
+    ];
+    const exiting = [
+      groups(container, 'p-3').inner!,
+      container.querySelector('path[data-motion="exit"]')!,
+    ];
+    expect(entering.map((element) => element.getAttribute('data-motion'))).toEqual([
+      'enter',
+      'enter',
+    ]);
+    expect(exiting.map((element) => element.getAttribute('data-motion'))).toEqual(['exit', 'exit']);
+
+    for (const element of [...entering, ...exiting]) {
+      const [animation, ...rest] = declared(element, 'animation');
+      expect(rest).toEqual([]);
+      expect(animation).toContain(theme.motion.treeTransition);
+      expect(declared(element, 'animation-duration', REDUCED_MOTION)).toEqual(['0s']);
+    }
+    // Появление ничего не держит после конца, исчезновение держит последний кадр до удаления.
+    expect(declared(entering[0]!, 'animation')[0]).toMatch(/\bbackwards\b/);
+    expect(declared(exiting[0]!, 'animation')[0]).toMatch(/\bforwards\b/);
   });
 });

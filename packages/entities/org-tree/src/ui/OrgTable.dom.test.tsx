@@ -1,5 +1,5 @@
 import { theme } from '@shared/theme';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { ThemeProvider } from 'styled-components';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { formatBudget } from '../model/format';
@@ -55,6 +55,7 @@ const LABELS: Record<OrgTableColumn, string> = {
 function makeModel(overrides: Partial<TableModel> = {}): TableModel {
   return {
     rows: ROWS,
+    updates: {},
     sort: 'name',
     dir: 'asc',
     isLoading: false,
@@ -97,8 +98,32 @@ const header = (column: OrgTableColumn) =>
   screen.getByRole('columnheader', { name: new RegExp(`^${LABELS[column]}`) });
 const sortButton = (column: OrgTableSortColumn) => within(header(column)).getByRole('button');
 
+/** Высота прокручиваемой области для ResizeObserver: от неё зависит шаг PageUp/PageDown. */
+let scrollerHeight = 0;
+
+beforeEach(() => {
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      private readonly callback: ResizeObserverCallback;
+      constructor(callback: ResizeObserverCallback) {
+        this.callback = callback;
+      }
+      observe() {
+        this.callback(
+          [{ contentRect: { width: 800, height: scrollerHeight } } as ResizeObserverEntry],
+          this as unknown as ResizeObserver,
+        );
+      }
+      disconnect() {}
+    },
+  );
+});
+
 afterEach(() => {
   vi.mocked(formatBudget).mockClear();
+  vi.unstubAllGlobals();
+  scrollerHeight = 0;
 });
 
 describe('OrgTable: сортировка', () => {
@@ -192,16 +217,11 @@ describe('OrgTable: строки и выделение', () => {
     expect(onSelect).toHaveBeenCalledTimes(2);
   });
 
-  it('выбранная строка отмечена data-selected и aria-current кнопки, остальные — нет', () => {
+  it('выбранная строка отмечена data-selected и aria-current, остальные — нет', () => {
     renderTable(makeModel(), 'p-1');
 
     expect(bodyRows().map((row) => row.dataset.selected)).toEqual(['false', 'true', 'false']);
-    expect(screen.getByRole('button', { name: 'Отдел 1' }).getAttribute('aria-current')).toBe(
-      'true',
-    );
-    expect(screen.getByRole('button', { name: 'Дивизион 1' }).hasAttribute('aria-current')).toBe(
-      false,
-    );
+    expect(bodyRows().map((row) => row.getAttribute('aria-current'))).toEqual([null, 'true', null]);
   });
 
   it('ячейки: уровень, численность, бюджет «12 345 678 руб.», эффективность округлена, null — «—»', () => {
@@ -365,5 +385,144 @@ describe('OrgTable: прокрутка к строке по запросу', () 
     update({ id: 'missing', nonce: 1 });
     expect(scrollIntoView).not.toHaveBeenCalled();
     expect(rowIds()).toEqual(['d-1', 'p-1', 't-1']);
+  });
+});
+
+describe('OrgTable: клавиатура', () => {
+  const scrollIntoView = vi.fn();
+  beforeEach(() => {
+    // В jsdom scrollIntoView не реализован.
+    Element.prototype.scrollIntoView = scrollIntoView;
+  });
+  afterEach(() => {
+    scrollIntoView.mockReset();
+    delete (Element.prototype as Partial<Element>).scrollIntoView;
+  });
+
+  const row = (id: string) => bodyRows().find((candidate) => candidate.dataset.id === id)!;
+  const focusedId = () => (document.activeElement as HTMLElement | null)?.dataset.id;
+  const press = (key: string) => fireEvent.keyDown(document.activeElement!, { key });
+  /** Вход в таблицу с Tab: фокус на единственной строке в порядке Tab. */
+  const enter = () =>
+    act(() =>
+      bodyRows()
+        .find((candidate) => candidate.tabIndex === 0)!
+        .focus(),
+    );
+  /** Элементы в порядке Tab: tabIndex ≥ 0 и не disabled. */
+  const tabStops = (container: HTMLElement) =>
+    [...container.querySelectorAll<HTMLElement>('input, button, [tabindex]')].filter(
+      (element) => element.tabIndex >= 0 && !(element as HTMLButtonElement).disabled,
+    );
+
+  it('Tab: в порядке Tab одна строка — в таблицу и из неё одним нажатием; кнопки названий вне порядка', () => {
+    const { container } = renderTable(makeModel());
+
+    const stops = tabStops(container);
+    // Поле, четыре кнопки сортировки («Очистить» при пустом поле disabled) и одна строка.
+    expect(stops).toHaveLength(6);
+    expect(stops.at(-1)).toBe(row('d-1'));
+    expect(bodyRows().map((candidate) => candidate.tabIndex)).toEqual([0, -1, -1]);
+    for (const name of ['Дивизион 1', 'Отдел 1', 'Команда 1']) {
+      expect(screen.getByRole('button', { name }).tabIndex).toBe(-1);
+    }
+
+    enter();
+    press('ArrowDown');
+    expect(focusedId()).toBe('p-1');
+    expect(tabStops(container).filter((element) => element.tagName === 'TR')).toEqual([row('p-1')]);
+  });
+
+  it('стрелки двигают фокус по строкам и останавливаются на краях; Home/End — к первой и последней', () => {
+    renderTable(makeModel());
+    enter();
+    expect(focusedId()).toBe('d-1');
+
+    press('ArrowDown');
+    expect(focusedId()).toBe('p-1');
+    press('ArrowDown');
+    expect(focusedId()).toBe('t-1');
+    press('ArrowDown');
+    expect(focusedId()).toBe('t-1');
+    press('Home');
+    expect(focusedId()).toBe('d-1');
+    press('ArrowUp');
+    expect(focusedId()).toBe('d-1');
+    press('End');
+    expect(focusedId()).toBe('t-1');
+    press('ArrowUp');
+    expect(focusedId()).toBe('p-1');
+
+    // Строка с фокусом доводится до видимой части; в порядке Tab — она.
+    expect(scrollIntoView.mock.contexts.at(-1)).toBe(row('p-1'));
+    expect(scrollIntoView).toHaveBeenLastCalledWith({ block: 'nearest' });
+    expect(bodyRows().map((candidate) => candidate.tabIndex)).toEqual([-1, 0, -1]);
+  });
+
+  it('PageDown/PageUp — на высоту прокручиваемой области без заголовка', () => {
+    // Три строки по 36px: под заголовком видны две.
+    scrollerHeight = 3 * 36;
+    renderTable(makeModel());
+    enter();
+
+    press('PageDown');
+    expect(focusedId()).toBe('t-1');
+    press('PageUp');
+    expect(focusedId()).toBe('d-1');
+  });
+
+  it('Enter выбирает строку с фокусом — и на строке, и на кнопке названия после клика мышью', () => {
+    const { onSelect } = renderTable(makeModel());
+    enter();
+    press('ArrowDown');
+    press('Enter');
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect).toHaveBeenLastCalledWith('p-1');
+
+    const button = screen.getByRole('button', { name: 'Дивизион 1' });
+    act(() => button.focus());
+    press('Enter');
+    expect(onSelect).toHaveBeenCalledTimes(2);
+    expect(onSelect).toHaveBeenLastCalledWith('d-1');
+    press('ArrowDown');
+    expect(focusedId()).toBe('p-1');
+  });
+
+  it('смена сортировки: фокус и место в порядке Tab остаются на том же узле, а не на позиции', () => {
+    const model = makeModel();
+    const { update } = renderTable(model);
+    enter();
+    expect(focusedId()).toBe('d-1');
+
+    update({ ...model, dir: 'desc', rows: ROWS.toReversed().map((r) => ({ ...r })) });
+    expect(rowIds()).toEqual(['t-1', 'p-1', 'd-1']);
+    expect(focusedId()).toBe('d-1');
+    expect(bodyRows().map((candidate) => candidate.tabIndex)).toEqual([-1, -1, 0]);
+
+    // Стрелки идут по новому порядку.
+    press('ArrowUp');
+    expect(focusedId()).toBe('p-1');
+  });
+
+  it('узел с фокусом отфильтрован: фокус на ближайшей оставшейся строке; без строк фокус не возвращается', () => {
+    const model = makeModel();
+    const { update } = renderTable(model);
+    enter();
+    press('ArrowDown');
+    expect(focusedId()).toBe('p-1');
+
+    update({ ...model, rows: [ROWS[0]!, ROWS[2]!] });
+    expect(focusedId()).toBe('t-1');
+    expect(bodyRows().map((candidate) => candidate.tabIndex)).toEqual([-1, 0]);
+
+    // Следующей нет — предыдущая.
+    update({ ...model, rows: [ROWS[0]!] });
+    expect(focusedId()).toBe('d-1');
+
+    // Строк не осталось: фокус ушёл, и появившиеся строки его не забирают.
+    update({ ...model, rows: [] });
+    update(model);
+    expect(document.activeElement).toBe(document.body);
+    expect(bodyRows().map((candidate) => candidate.tabIndex)).toEqual([0, -1, -1]);
   });
 });

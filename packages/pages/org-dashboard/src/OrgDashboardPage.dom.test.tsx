@@ -1,6 +1,14 @@
 // eslint-disable-next-line no-restricted-imports -- тест собирает стор, как это делает @app/web
 import { combineSlices, configureStore } from '@reduxjs/toolkit';
-import { orgTreeSaga, orgTreeSlice, type OrgNode } from '@entities/org-tree';
+import {
+  orgTreeLivePatchSaga,
+  orgTreeLiveSaga,
+  orgTreeLiveSlice,
+  orgTreeSaga,
+  orgTreeSlice,
+  orgTreeUpdatesSlice,
+  type OrgNode,
+} from '@entities/org-tree';
 import { theme } from '@shared/theme';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useEffect } from 'react';
@@ -120,6 +128,25 @@ beforeEach(() => {
     }),
   );
   Element.prototype.scrollIntoView = scrollIntoView;
+  // Индикатор соединения подписывается при монтировании страницы: EventSource остаётся
+  // в CONNECTING, сага не уходит в бесконечные попытки и не мешает тестам дерева и таблицы.
+  vi.stubGlobal(
+    'EventSource',
+    class extends EventTarget {
+      static readonly CONNECTING = 0;
+      static readonly OPEN = 1;
+      static readonly CLOSED = 2;
+      readyState = 0;
+      url: string;
+      constructor(url: string) {
+        super();
+        this.url = url;
+      }
+      close() {
+        this.readyState = 2;
+      }
+    },
+  );
 });
 
 afterEach(() => {
@@ -132,10 +159,12 @@ afterEach(() => {
 function renderPage(url: string) {
   const sagaMiddleware = createSagaMiddleware();
   const store = configureStore({
-    reducer: combineSlices(orgTreeSlice),
+    reducer: combineSlices(orgTreeSlice, orgTreeLiveSlice, orgTreeUpdatesSlice),
     middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(sagaMiddleware),
   });
   sagaMiddleware.run(orgTreeSaga);
+  sagaMiddleware.run(orgTreeLiveSaga);
+  sagaMiddleware.run(orgTreeLivePatchSaga);
   return render(
     <Provider store={store}>
       <ThemeProvider theme={theme}>
@@ -153,7 +182,9 @@ const radios = () => within(screen.getByRole('radiogroup')).getAllByRole<HTMLInp
 const checkedView = () => radios().find((radio) => radio.checked)?.value;
 const radio = (name: string) => screen.getByRole('radio', { name });
 const tree = () => screen.getByLabelText('Оргструктура');
-const treeCard = (id: string) => tree().querySelector<HTMLElement>(`[data-id="${id}"]`);
+/** Карточка узла раскладки: исчезающий после сворачивания узел (ещё в DOM до конца анимации) — не она. */
+const treeCard = (id: string) =>
+  tree().querySelector<HTMLElement>(`[data-node-id="${id}"] [data-id="${id}"]`);
 const table = () => screen.getByRole('table');
 const tableRow = (id: string) => table().querySelector<HTMLElement>(`tr[data-id="${id}"]`);
 const searchbox = () => screen.getByRole<HTMLInputElement>('searchbox');

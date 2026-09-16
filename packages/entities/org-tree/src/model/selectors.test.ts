@@ -8,6 +8,7 @@ import {
   selectIsEmpty,
   selectIsPlaceholder,
   selectOrgNodes,
+  selectParentIndex,
   selectRootNodes,
   selectStatus,
   selectSubtreeAggregates,
@@ -114,6 +115,49 @@ describe('селекторы оргдерева', () => {
     expect(selectOrgNodes(twoKeys, P)).toBe(nodes);
     expect(selectOrgNodes(twoKeys, other)).toBe(otherNodes);
     expect(selectExpandableIds(twoKeys, other)).toEqual([]);
+  });
+
+  it('новые данные той же структуры: индексы структуры прежние, дерево — с новыми значениями и matches', () => {
+    const structureOf = (state: ReturnType<typeof stateWith>) => ({
+      children: selectChildrenIndex(state, P),
+      parents: selectParentIndex(state, P),
+      firstLevel: selectFirstLevelIds(state, P),
+      expandable: selectExpandableIds(state, P),
+    });
+    const base = makeOrgNodes();
+    const before = structureOf(stateWith(base));
+
+    // Патч метрик: те же id, parentId и name на тех же местах.
+    const patched = base.map((node) =>
+      node.id === 'p-1' ? { ...node, headcount: 30, matches: false } : node,
+    );
+    const after = stateWith(patched);
+    expect(structureOf(after)).toStrictEqual(before);
+    for (const [key, value] of Object.entries(structureOf(after))) {
+      expect(value, key).toBe(before[key as keyof typeof before]);
+    }
+    const tree = selectVisibleTree(after, P, new Set(['d-b']));
+    const departmentOne = tree[1]!.children.find((node) => node.id === 'p-1')!;
+    expect(departmentOne.data.node.headcount).toBe(30);
+    expect(departmentOne.data.matches).toBe(false);
+
+    // Структура изменилась — индексы новые: перенос узла при тех же id и именах на местах…
+    const moved = patched.map((node) => (node.id === 't-3' ? { ...node, parentId: 'p-1' } : node));
+    expect(
+      selectChildrenIndex(stateWith(moved), P)
+        .get('p-1')!
+        .map((node) => node.id),
+    ).toEqual(['t-1', 't-2', 't-3']);
+    expect(selectParentIndex(stateWith(moved), P).get('t-3')).toBe('p-1');
+
+    // …и новый узел.
+    const grown = [...patched, { ...base[7]!, id: 't-4', parentId: 'p-2', order: base.length }];
+    expect(selectChildrenIndex(stateWith(grown), P)).not.toBe(before.children);
+    expect(
+      selectChildrenIndex(stateWith(grown), P)
+        .get('p-2')!
+        .map((node) => node.id),
+    ).toEqual(['t-4']);
   });
 
   it('пустой ответ', () => {

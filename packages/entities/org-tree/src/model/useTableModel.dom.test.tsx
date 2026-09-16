@@ -6,7 +6,7 @@ import createSagaMiddleware from 'redux-saga';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_ORG_TREE_PARAMS as P, type OrgTreeParams } from './params';
 import type { OrgNode } from './schema';
-import { orgTreeSaga, orgTreeSlice } from './store';
+import { orgTreeSaga, orgTreeSlice, orgTreeUpdatesSlice } from './store';
 import { makeOrgNodes } from './testing/fixtures';
 import { TABLE_QUERY_DEBOUNCE_MS, useTableModel } from './useTableModel';
 
@@ -15,7 +15,7 @@ import { TABLE_QUERY_DEBOUNCE_MS, useTableModel } from './useTableModel';
  * единственные таймеры в тесте принадлежат хуку.
  */
 function renderModel(initialParams: OrgTreeParams = P) {
-  const store = configureStore({ reducer: combineSlices(orgTreeSlice) });
+  const store = configureStore({ reducer: combineSlices(orgTreeSlice, orgTreeUpdatesSlice) });
   const onParamsChange = vi.fn<(params: OrgTreeParams) => void>();
   const view = renderHook((params: OrgTreeParams) => useTableModel({ params, onParamsChange }), {
     initialProps: initialParams,
@@ -217,7 +217,7 @@ describe('useTableModel: данные', () => {
   function renderWithParent() {
     const sagaMiddleware = createSagaMiddleware();
     const store = configureStore({
-      reducer: combineSlices(orgTreeSlice),
+      reducer: combineSlices(orgTreeSlice, orgTreeUpdatesSlice),
       middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(sagaMiddleware),
     });
     sagaMiddleware.run(orgTreeSaga);

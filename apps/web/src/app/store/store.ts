@@ -1,4 +1,5 @@
 import { configureStore } from '@reduxjs/toolkit';
+import { QUERY_FUNCTION_ACTION_PATHS } from '@shared/query';
 import createSagaMiddleware from 'redux-saga';
 import { rootReducer } from './rootReducer';
 import { rootSaga } from './rootSaga';
@@ -8,7 +9,10 @@ export function createAppStore() {
 
   const store = configureStore({
     reducer: rootReducer,
-    middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(sagaMiddleware),
+    middleware: (getDefaultMiddleware) =>
+      getDefaultMiddleware({
+        serializableCheck: { ignoredActionPaths: QUERY_FUNCTION_ACTION_PATHS },
+      }).concat(sagaMiddleware),
     devTools: import.meta.env.DEV,
   });
 

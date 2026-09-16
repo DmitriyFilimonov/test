@@ -1,8 +1,9 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { LayoutNode, LayoutResult } from '@shared/tidy-tree';
-import styled, { useTheme } from 'styled-components';
+import styled, { keyframes, useTheme } from 'styled-components';
 import { revealBox } from '../lib/revealBox';
 import type { RevealRequest } from '../model/selection';
+import { useLayoutTransition } from '../model/useLayoutTransition';
 import { TreeEdge } from './TreeEdge';
 
 /** Экран = мир · k + (x, y). */
@@ -24,6 +25,43 @@ const WHEEL_COMMIT_DELAY_MS = 150;
 const WHEEL_ZOOM_SPEED = 0.0015;
 const INITIAL_VIEW: View = { x: 0, y: 0, k: 1 };
 
+/*
+ * Внутренняя группа узла сдвинута атрибутом от угла якоря к месту узла; transform: none в
+ * ключевом кадре ставит узел в угол якоря, конец анимации — значение атрибута. Кадр один на все
+ * узлы: смещение каждого узла — SVG-атрибут, а не стиль.
+ */
+const nodeEnter = keyframes`
+  from {
+    opacity: 0;
+    transform: none;
+  }
+`;
+
+const nodeExit = keyframes`
+  to {
+    opacity: 0;
+    transform: none;
+  }
+`;
+
+const edgeEnter = keyframes`
+  from {
+    opacity: 0;
+  }
+`;
+
+const edgeExit = keyframes`
+  to {
+    opacity: 0;
+  }
+`;
+
+/*
+ * Появление и исчезновение — статические правила по data-motion. Появление без заполнения после
+ * конца: закончившаяся анимация ничего не держит на узле. Исчезновение держит последний кадр, пока
+ * узел не удалён по animationend. При reduced motion длительность нулевая: анимации не видно, а
+ * animationend приходит, и исчезнувший узел удаляется тем же путём.
+ */
 const Svg = styled.svg`
   display: block;
   width: 100%;
@@ -34,6 +72,39 @@ const Svg = styled.svg`
 
   &[data-dragging='true'] {
     cursor: grabbing;
+  }
+
+  & g[data-motion='enter'] {
+    animation: ${nodeEnter} ${({ theme }) => theme.motion.treeTransition}
+      ${({ theme }) => theme.motion.treeEasing} backwards;
+  }
+
+  & g[data-motion='exit'] {
+    animation: ${nodeExit} ${({ theme }) => theme.motion.treeTransition}
+      ${({ theme }) => theme.motion.treeEasing} forwards;
+  }
+
+  & path[data-motion='enter'] {
+    animation: ${edgeEnter} ${({ theme }) => theme.motion.treeTransition}
+      ${({ theme }) => theme.motion.treeEasing} backwards;
+  }
+
+  & path[data-motion='exit'] {
+    animation: ${edgeExit} ${({ theme }) => theme.motion.treeTransition}
+      ${({ theme }) => theme.motion.treeEasing} forwards;
+  }
+
+  /* Исчезающий узел не перехватывает клики у тех, что под ним. */
+  & [data-exiting-id] {
+    pointer-events: none;
+  }
+
+  /* Та же специфичность, что у правил выше, и позже них: длительность перекрывается. */
+  @media (prefers-reduced-motion: reduce) {
+    & g[data-motion],
+    & path[data-motion] {
+      animation-duration: 0s;
+    }
   }
 `;
 
@@ -104,6 +175,7 @@ export function TreeCanvas<T>({
   const frameRef = useRef(0);
   const fittedRef = useRef(false);
 
+  const { nodes, edges, handleAnimationEnd } = useLayoutTransition(layout);
   const nodesById = useMemo(() => new Map(layout.nodes.map((node) => [node.id, node])), [layout]);
   const nodesByIdRef = useRef(nodesById);
   const previousNodesByIdRef = useRef(nodesById);
@@ -185,6 +257,13 @@ export function TreeCanvas<T>({
       commit(next);
     }
   }, [revealRequest, nodesById, size]);
+
+  // Нативный слушатель: React в окружении без AnimationEvent слушает webkitAnimationEnd.
+  useEffect(() => {
+    const group = groupRef.current!;
+    group.addEventListener('animationend', handleAnimationEnd);
+    return () => group.removeEventListener('animationend', handleAnimationEnd);
+  }, [handleAnimationEnd]);
 
   // Жесты: нативные слушатели, чтобы wheel был не пассивным (нужен preventDefault),
   // а pointer-события — пассивными.
@@ -327,26 +406,42 @@ export function TreeCanvas<T>({
     <Svg ref={svgRef} aria-label={ariaLabel}>
       <g ref={groupRef} transform={formatTransform(view)}>
         <g>
-          {layout.edges.map((edge) => {
-            const parent = nodesById.get(edge.parentId)!;
-            const child = nodesById.get(edge.childId)!;
-            return (
-              <TreeEdge
-                key={edge.id}
-                x1={parent.x + parent.width / 2}
-                y1={parent.y + parent.height}
-                x2={child.x + child.width / 2}
-                y2={child.y}
-              />
-            );
-          })}
+          {edges.map((edge) => (
+            <TreeEdge
+              key={edge.id}
+              x1={edge.x1}
+              y1={edge.y1}
+              x2={edge.x2}
+              y2={edge.y2}
+              motion={edge.motion}
+            />
+          ))}
         </g>
         <g>
-          {layout.nodes.map((node) => (
-            <g key={node.id} data-node-id={node.id} transform={`translate(${node.x} ${node.y})`}>
-              {renderNode(node)}
-            </g>
-          ))}
+          {nodes.map((item) => {
+            const { node } = item;
+            const exiting = item.motion === 'exit';
+            const dx = item.originX - item.x;
+            const dy = item.originY - item.y;
+            // Внешняя группа — место узла, средняя — угол якоря, внутренняя возвращает на место и
+            // анимируется. Исчезающий узел не считается узлом раскладки (data-node-id) и скрыт
+            // от скринридера.
+            return (
+              <g
+                key={node.id}
+                data-node-id={exiting ? undefined : node.id}
+                data-exiting-id={exiting ? node.id : undefined}
+                aria-hidden={exiting ? true : undefined}
+                transform={`translate(${item.x} ${item.y})`}
+              >
+                <g transform={`translate(${dx} ${dy})`}>
+                  <g data-motion={item.motion ?? undefined} transform={`translate(${-dx} ${-dy})`}>
+                    {renderNode(node)}
+                  </g>
+                </g>
+              </g>
+            );
+          })}
         </g>
       </g>
     </Svg>

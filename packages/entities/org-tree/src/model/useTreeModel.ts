@@ -1,7 +1,13 @@
 import { useCallback, useState, type MouseEvent } from 'react';
 import { useTheme } from 'styled-components';
 import { useTreeLayout } from '../lib/useTreeLayout';
-import { useDefaultExpandedIds, useOrgTree, useOrgTreeStructure, useVisibleOrgTree } from './hooks';
+import {
+  useDefaultExpandedIds,
+  useOrgTree,
+  useOrgTreeStructure,
+  useOrgTreeUpdates,
+  useVisibleOrgTree,
+} from './hooks';
 import { DEFAULT_ORG_TREE_PARAMS, type OrgTreeParams } from './params';
 import type { RevealRequest } from './selection';
 import { useExpansion } from './useExpansion';
@@ -74,6 +80,7 @@ export function useTreeModel(props: OrgTreeViewProps) {
   const firstLevelId = structure.firstLevelIds[0] ?? null;
 
   const visibleTree = useVisibleOrgTree(params, expandedIds);
+  const updates = useOrgTreeUpdates();
   const layout = useTreeLayout(visibleTree, tree.nodeSize);
 
   // Один делегированный слушатель на весь холст вместо обработчика на каждом узле.
@@ -119,6 +126,8 @@ export function useTreeModel(props: OrgTreeViewProps) {
     hasTree: hasData && !isEmpty,
     isRequesting: status === 'loading',
     layout,
+    /** Номера патчей, изменивших значения узлов: для подсветки полей карточки. */
+    updates,
     expandedIds,
     selectedId,
     dimUnmatched,

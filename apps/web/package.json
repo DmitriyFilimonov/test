@@ -16,6 +16,7 @@
     "@pages/about": "*",
     "@pages/org-dashboard": "*",
     "@reduxjs/toolkit": "^2.12.0",
+    "@shared/query": "*",
     "@shared/theme": "*",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",

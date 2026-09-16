@@ -1,6 +1,6 @@
 export { OrgTreeHttpError, OrgTreeNetworkError } from './api/fetchOrgTree';
-export { aggregateSubtrees } from './model/aggregate';
-export type { SubtreeAggregate } from './model/aggregate';
+export { aggregateSubtrees, applyAggregatePatch } from './model/aggregate';
+export type { AggregateChanges, AggregateIndex, SubtreeAggregate } from './model/aggregate';
 export {
   BUDGET_GROUP_SEPARATOR,
   BUDGET_SUFFIX,
@@ -19,9 +19,18 @@ export {
   useDefaultExpandedIds,
   useOrgTree,
   useOrgTreeStructure,
+  useOrgTreeUpdates,
   useVisibleOrgTree,
 } from './model/hooks';
 export { isSameOrgTree } from './model/isEqual';
+export {
+  orgNodeChangeSchema,
+  orgTreeHelloSchema,
+  orgTreeLive,
+  orgTreePatchSchema,
+  parseOrgTreeLiveEvent,
+} from './model/live';
+export type { OrgNodeChange, OrgTreeLiveEvent, OrgTreePatch } from './model/live';
 export {
   DEFAULT_ORG_TREE_PARAMS,
   ORG_TREE_MAX_QUERY_LENGTH,
@@ -63,12 +72,30 @@ export type {
   VisibleOrgTreeNode,
 } from './model/selectors';
 export type { RevealRequest } from './model/selection';
-export { orgTreeSaga, orgTreeSlice } from './model/store';
+export {
+  orgTreeLivePatchSaga,
+  orgTreeLiveSaga,
+  orgTreeLiveSlice,
+  orgTreeSaga,
+  orgTreeSlice,
+  orgTreeUpdatesSlice,
+} from './model/store';
+export { applyOrgTreePatch } from './model/livePatch';
+export type { OrgTreePatchResult } from './model/livePatch';
+export { UPDATABLE_METRICS, orgTreeUpdatesRecorded, selectOrgTreeUpdates } from './model/updates';
+export type {
+  OrgNodeUpdates,
+  OrgTreeUpdatesRootState,
+  OrgTreeUpdatesState,
+  UpdatableMetric,
+} from './model/updates';
 export { ORG_TABLE_COLUMNS, ORG_TABLE_SORT_COLUMNS, selectTableRows } from './model/table';
 export type { OrgTableColumn, OrgTableSortColumn, TableRow } from './model/table';
 export { TABLE_QUERY_DEBOUNCE_MS, useTableModel } from './model/useTableModel';
 export type { TableModel, UseTableModelOptions } from './model/useTableModel';
 export { useExpansion } from './model/useExpansion';
+export { useOrgTreeLiveStatus, useOrgTreeLiveSubscription } from './model/useOrgTreeLive';
+export type { OrgTreeLiveRootState, OrgTreeLiveStatus } from './model/useOrgTreeLive';
 export type { Expansion, UseExpansionOptions } from './model/useExpansion';
 export { OrgTable } from './ui/OrgTable';
 export type { OrgTableProps } from './ui/OrgTable';

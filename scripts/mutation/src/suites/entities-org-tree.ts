@@ -71,13 +71,13 @@ export const entitiesAggregateSuite: Suite = {
   mutations: [
     {
       name: 'среднее не взвешено по headcount',
-      from: 'weighted: node.performance * node.headcount,',
-      to: 'weighted: node.performance,',
+      from: 'let weighted = node.performance * node.headcount;',
+      to: 'let weighted = node.performance;',
     },
     {
       name: 'нулевой headcount даёт деление на ноль вместо null',
-      from: 'performance: total.headcount > 0 ? total.weighted / total.headcount : null,',
-      to: 'performance: total.weighted / total.headcount,',
+      from: 'entry.performance = entry.headcount > 0 ? weighted / entry.headcount : null;',
+      to: 'entry.performance = weighted / entry.headcount;',
     },
   ],
 };
@@ -94,7 +94,7 @@ export const entitiesSelectorsSuite: Suite = {
     },
     {
       name: 'в видимом дереве собственные значения вместо итогов подразделения',
-      from: 'subtree: aggregates.get(node.id)!',
+      from: 'subtree: toSubtreeAggregate(aggregates.get(node.id)!)',
       to: 'subtree: { headcount: node.headcount, budget: node.budget, performance: node.performance }',
     },
     {
@@ -104,8 +104,9 @@ export const entitiesSelectorsSuite: Suite = {
     },
     {
       name: 'агрегация зависит от expandedIds (итоги считаются в selectVisibleTree на каждое раскрытие)',
-      from: '    selectSubtreeAggregates,\n    (_state: OrgTreeRootState, _params: OrgTreeParams, expandedIds: ReadonlySet<string>) =>\n      expandedIds,\n  ],\n  (index, roots, aggregates, expandedIds): VisibleOrgTreeNode[] => {\n',
-      to: '    selectOrgNodes,\n    (_state: OrgTreeRootState, _params: OrgTreeParams, expandedIds: ReadonlySet<string>) =>\n      expandedIds,\n  ],\n  (index, roots, nodes, expandedIds): VisibleOrgTreeNode[] => {\n    const aggregates = aggregateSubtrees(nodes);\n',
+      from: 'subtree: toSubtreeAggregate(aggregates.get(node.id)!),',
+      // Копия массива — промах кеша индексов: полный расчёт внутри построения дерева.
+      to: 'subtree: toSubtreeAggregate(getAggregateIndex([...nodeById.values()]).get(node.id)!),',
     },
     {
       name: 'флаг matches в дереве всегда true',

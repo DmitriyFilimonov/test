@@ -2,13 +2,21 @@ import { memo, useCallback, useEffect, useRef, type MouseEvent, type ReactNode }
 import styled, { css, useTheme } from 'styled-components';
 import { ORG_TREE_MAX_QUERY_LENGTH } from '../model/params';
 import type { RevealRequest } from '../model/selection';
-import { ORG_TABLE_COLUMNS, type OrgTableColumn, type OrgTableSortColumn } from '../model/table';
+import {
+  ORG_TABLE_COLUMNS,
+  type OrgTableColumn,
+  type OrgTableSortColumn,
+  type TableRow,
+} from '../model/table';
+import { useTableKeyboard } from '../model/useTableKeyboard';
 import type { TableModel } from '../model/useTableModel';
 import { OrgTableRow } from './OrgTableRow';
 import { Button } from './primitives';
 import { Cell } from './tableCells';
 
 type AriaSort = 'ascending' | 'descending' | 'none';
+
+const NO_ROWS: readonly TableRow[] = [];
 
 const COLUMN_LABELS: Record<OrgTableColumn, string> = {
   name: 'Подразделение',
@@ -297,7 +305,14 @@ export function OrgTable({ model, selectedId, onSelect, revealRequest = null }: 
   const { table } = useTheme();
   const inputRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLTableSectionElement>(null);
+  const scrollerRef = useRef<HTMLDivElement>(null);
   const { clearQuery, setDraftQuery } = model;
+  const keyboard = useTableKeyboard({
+    rows: model.isLoading ? NO_ROWS : model.rows,
+    onSelect,
+    bodyRef,
+    scrollerRef,
+  });
 
   const handleClear = useCallback(() => {
     clearQuery();
@@ -305,8 +320,7 @@ export function OrgTable({ model, selectedId, onSelect, revealRequest = null }: 
     inputRef.current?.focus();
   }, [clearQuery]);
 
-  // Один делегированный слушатель на все строки: и клик мышью по любой ячейке, и Enter/Space
-  // на кнопке названия (они порождают click).
+  // Один делегированный слушатель на все строки: клик мышью по любой ячейке или по кнопке названия.
   const handleBodyClick = useCallback(
     (event: MouseEvent<HTMLTableSectionElement>) => {
       const id = (event.target as Element).closest<HTMLElement>('tr[data-id]')?.dataset.id;
@@ -334,19 +348,26 @@ export function OrgTable({ model, selectedId, onSelect, revealRequest = null }: 
   if (model.isLoading) {
     body = <SkeletonRows count={table.skeletonRows} />;
   } else if (model.rows.length > 0) {
-    body = model.rows.map((row) => (
-      <OrgTableRow
-        key={row.id}
-        id={row.id}
-        name={row.name}
-        level={row.level}
-        totalHeadcount={row.totalHeadcount}
-        totalBudget={row.totalBudget}
-        totalPerformance={row.totalPerformance}
-        matches={row.matches}
-        selected={row.id === selectedId}
-      />
-    ));
+    body = model.rows.map((row) => {
+      const updates = model.updates[row.id];
+      return (
+        <OrgTableRow
+          key={row.id}
+          id={row.id}
+          name={row.name}
+          level={row.level}
+          totalHeadcount={row.totalHeadcount}
+          totalBudget={row.totalBudget}
+          totalPerformance={row.totalPerformance}
+          matches={row.matches}
+          selected={row.id === selectedId}
+          focusable={row.id === keyboard.focusableId}
+          totalHeadcountUpdate={updates?.totalHeadcount}
+          totalBudgetUpdate={updates?.totalBudget}
+          totalPerformanceUpdate={updates?.totalPerformance}
+        />
+      );
+    });
   } else {
     const message = !model.hasData
       ? 'Данные не загружены'
@@ -395,15 +416,15 @@ export function OrgTable({ model, selectedId, onSelect, revealRequest = null }: 
           </ValidatingText>
         </Status>
       </Toolbar>
-      <Scroller>
+      <Scroller ref={scrollerRef}>
         <Table
           data-placeholder={model.isPlaceholder}
           aria-busy={model.isLoading || model.isPlaceholder}
         >
           <Caption>
             Подразделения с итогами по всем вложенным: численность, бюджет и эффективность,
-            взвешенная по сотрудникам. Сортировка — кнопками в заголовках столбцов, выбор строки —
-            кнопкой с названием.
+            взвешенная по сотрудникам. Сортировка — кнопками в заголовках столбцов. По строкам —
+            стрелками вверх и вниз, Home и End, выбор строки — Enter или кнопкой с названием.
           </Caption>
           <thead>
             <tr>
@@ -431,7 +452,13 @@ export function OrgTable({ model, selectedId, onSelect, revealRequest = null }: 
               )}
             </tr>
           </thead>
-          <tbody ref={bodyRef} onClick={handleBodyClick}>
+          <tbody
+            ref={bodyRef}
+            onClick={handleBodyClick}
+            onKeyDown={keyboard.handleKeyDown}
+            onFocus={keyboard.handleFocus}
+            onBlur={keyboard.handleBlur}
+          >
             {body}
           </tbody>
         </Table>

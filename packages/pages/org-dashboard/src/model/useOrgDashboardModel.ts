@@ -1,6 +1,7 @@
 import {
   useDefaultExpandedIds,
   useExpansion,
+  useOrgTreeLiveSubscription,
   useOrgTreeStructure,
   type RevealRequest,
 } from '@entities/org-tree';
@@ -36,6 +37,9 @@ const NO_SELECTION: SelectionState = {
  * выделение в состоянии страницы. Страница только рисует модель.
  */
 export function useOrgDashboardModel() {
+  // Поток изменений открыт, пока страница на экране. Состояние соединения читает индикатор:
+  // смена статуса перерисовывает его, а не страницу.
+  useOrgTreeLiveSubscription();
   const { params, view, setParams, setView } = useOrgDashboardParams();
   const splitAvailable = useSplitAvailable();
   const effectiveView = resolveView(view, splitAvailable);

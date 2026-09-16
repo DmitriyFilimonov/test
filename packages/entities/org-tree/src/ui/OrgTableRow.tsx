@@ -1,12 +1,16 @@
 import { memo } from 'react';
 import styled from 'styled-components';
 import { formatBudget, formatPerformance } from '../model/format';
+import { useFreshUpdates } from '../model/useFreshUpdates';
 import { Cell } from './tableCells';
+import { updateHighlight } from './updateHighlight';
 
 /** Цифры одной ширины: колонка не «дышит», когда строки меняются местами. */
 const NumberCell = styled(Cell)`
   text-align: right;
   font-variant-numeric: tabular-nums;
+
+  ${updateHighlight}
 `;
 
 /** Шаг отступа названия на уровень. */
@@ -35,10 +39,17 @@ const NameCell = styled(Cell)`
 /*
  * Выбор показан и фоном, и маркером слева: inset-тень не занимает места, строка не
  * сдвигается. Строка контекста (предок совпавшего узла) приглушена. Правила статические,
- * по data-атрибутам.
+ * по data-атрибутам. Фокус с клавиатуры — рамкой внутри строки, не только фоном; прокрутка к
+ * строке оставляет над ней место под липкий заголовок.
  */
 const Row = styled.tr`
   cursor: pointer;
+  scroll-margin-top: ${({ theme }) => theme.table.rowHeight};
+
+  &:focus-visible {
+    outline: 2px solid ${({ theme }) => theme.colors.focus};
+    outline-offset: -2px;
+  }
 
   &[data-matches='false'] {
     color: ${({ theme }) => theme.colors.textMuted};
@@ -88,13 +99,22 @@ export interface OrgTableRowProps {
   /** false — строка контекста: сам узел не совпал с фильтром, совпал потомок. */
   matches: boolean;
   selected: boolean;
+  /** Строка в порядке Tab (roving tabindex): у одной строки таблицы 0, у остальных -1. */
+  focusable: boolean;
+  /** Номер патча, последним изменившего итог; нет — итог патчами не менялся. */
+  totalHeadcountUpdate?: number;
+  totalBudgetUpdate?: number;
+  totalPerformanceUpdate?: number;
 }
 
 /**
  * Строка таблицы. Только примитивные пропсы и никаких позиционных (индекс, чётность):
- * при смене порядка React.memo пропускает строки с теми же данными. Клики обрабатывает
- * один делегированный слушатель таблицы по data-id. С клавиатуры строка выбирается
- * кнопкой с названием — Enter и Space у неё встроенные.
+ * при смене порядка React.memo пропускает строки с теми же данными. Клики и клавиши обрабатывают
+ * делегированные слушатели таблицы по data-id. Фокус получает сама строка; кнопка с названием
+ * вне порядка Tab: для скринридера она остаётся кнопкой в режиме чтения.
+ *
+ * Итог, изменённый патчем после монтирования строки, подсвечивается (`updateHighlight`): у ячейки
+ * data-updated и key с номером патча, повторное обновление — новая ячейка и анимация с начала.
  */
 export const OrgTableRow = memo(function OrgTableRow({
   id,
@@ -105,18 +125,39 @@ export const OrgTableRow = memo(function OrgTableRow({
   totalPerformance,
   matches,
   selected,
+  focusable,
+  totalHeadcountUpdate,
+  totalBudgetUpdate,
+  totalPerformanceUpdate,
 }: OrgTableRowProps) {
+  const fresh = useFreshUpdates({
+    headcount: totalHeadcountUpdate,
+    budget: totalBudgetUpdate,
+    performance: totalPerformanceUpdate,
+  });
   return (
-    <Row data-id={id} data-selected={selected} data-matches={matches}>
+    <Row
+      data-id={id}
+      data-selected={selected}
+      data-matches={matches}
+      aria-current={selected ? 'true' : undefined}
+      tabIndex={focusable ? 0 : -1}
+    >
       <NameCell data-level={level}>
-        <NameButton type="button" aria-current={selected ? 'true' : undefined} title={name}>
+        <NameButton type="button" tabIndex={-1} title={name}>
           {name}
         </NameButton>
       </NameCell>
       <NumberCell>{level}</NumberCell>
-      <NumberCell>{totalHeadcount}</NumberCell>
-      <NumberCell>{formatBudget(totalBudget)}</NumberCell>
-      <NumberCell>{formatPerformance(totalPerformance)}</NumberCell>
+      <NumberCell key={`headcount-${fresh.headcount}`} data-updated={fresh.headcount}>
+        {totalHeadcount}
+      </NumberCell>
+      <NumberCell key={`budget-${fresh.budget}`} data-updated={fresh.budget}>
+        {formatBudget(totalBudget)}
+      </NumberCell>
+      <NumberCell key={`performance-${fresh.performance}`} data-updated={fresh.performance}>
+        {formatPerformance(totalPerformance)}
+      </NumberCell>
     </Row>
   );
 });

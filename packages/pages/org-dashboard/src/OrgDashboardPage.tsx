@@ -8,6 +8,7 @@ import {
 } from '@entities/org-tree';
 import styled from 'styled-components';
 import { useOrgDashboardModel } from './model/useOrgDashboardModel';
+import { LiveIndicator } from './ui/LiveIndicator';
 import { ViewSwitcher } from './ui/ViewSwitcher';
 
 const Header = styled.div`
@@ -89,6 +90,7 @@ export function OrgDashboardPage() {
       <Header>
         <Title>Оргструктура</Title>
         <ViewSwitcher views={model.views} value={model.view} onChange={model.setView} />
+        <LiveIndicator />
       </Header>
       <Panes data-view={model.view}>
         {model.showTree && (

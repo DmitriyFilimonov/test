@@ -19,6 +19,11 @@ import {
   selectVisibleTree,
   type OrgTreeRootState,
 } from './selectors';
+import {
+  selectOrgTreeUpdates,
+  type OrgTreeUpdatesRootState,
+  type OrgTreeUpdatesState,
+} from './updates';
 
 const useOrgTreeSelector = useSelector.withTypes<OrgTreeRootState>();
 
@@ -63,6 +68,14 @@ export function useOrgTreeStructure(params: OrgTreeParams) {
 /** Раскрытие по умолчанию для данных этих параметров: узлы первого уровня. */
 export function useDefaultExpandedIds(params: OrgTreeParams): ReadonlySet<string> {
   return useOrgTreeSelector((state) => selectDefaultExpandedIds(state, params));
+}
+
+/**
+ * Номера патчей, изменивших значения узлов. Меняется только от патчей потока: подсветка
+ * обновлённых значений, без таймеров и без состояния «подсвечено».
+ */
+export function useOrgTreeUpdates(): OrgTreeUpdatesState {
+  return useSelector((state: OrgTreeUpdatesRootState) => selectOrgTreeUpdates(state));
 }
 
 /** Дерево видимых узлов при данном наборе раскрытых. */

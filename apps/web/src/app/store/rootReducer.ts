@@ -1,10 +1,11 @@
 import { combineSlices } from '@reduxjs/toolkit';
-import { orgTreeSlice } from '@entities/org-tree';
+import { orgTreeLiveSlice, orgTreeSlice, orgTreeUpdatesSlice } from '@entities/org-tree';
 
 /**
  * Статическая сборка корневого редьюсера из того, что экспортируют пакеты: каждый
  * аргумент — слайс или объект `{ reducerPath, reducer }`. `combineSlices` без `.inject()`
- * — обычная статическая сборка. В сторе только серверные данные: раскрытие, панорама и
- * зум живут в виджете.
+ * — обычная статическая сборка. В сторе только серверные данные и состояние связи с сервером
+ * (запросы, поток изменений, номера патчей, изменивших значения): раскрытие, панорама и зум
+ * живут в компонентах.
  */
-export const rootReducer = combineSlices(orgTreeSlice);
+export const rootReducer = combineSlices(orgTreeSlice, orgTreeLiveSlice, orgTreeUpdatesSlice);

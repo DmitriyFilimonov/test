@@ -22,6 +22,13 @@ import { serializeParams } from './serializeParams';
 export const DEFAULT_STALE_TIME = 5000;
 export const DEFAULT_GC_TIME = 5 * 60 * 1000;
 
+/**
+ * Пути в экшенах запроса, где лежат функции (updater у patched, predicate у invalidated):
+ * для `serializableCheck.ignoredActionPaths` стора. Экшены с функциями не пишутся и не
+ * воспроизводятся — это команды редьюсеру, а не данные.
+ */
+export const QUERY_FUNCTION_ACTION_PATHS = ['payload.updater', 'payload.predicate'];
+
 export type QueryStatus = 'idle' | 'loading' | 'success' | 'error';
 
 /** Запись кеша одного ключа. */
@@ -98,6 +105,26 @@ export function createQuery<TName extends string, TParams, TData>({
       payload: { params, key: getKey(params), force: options?.force === true },
     }),
   );
+  /**
+   * Изменение данных ключа без запроса (например, патч от сервера): updater получает data
+   * записи и возвращает новые. Данные после патча свежие — fetchedAt становится временем
+   * патча. Запись без данных не меняется: патчить нечего, данные придут ответом на запрос.
+   */
+  const patched = createAction(
+    `${name}/patched`,
+    (params: TParams, updater: (data: TData) => TData) => ({
+      payload: { params, key: getKey(params), updater, fetchedAt: Date.now() },
+    }),
+  );
+  /**
+   * Пометить протухшими записи, чей ключ подходит под predicate: fetchedAt сбрасывается,
+   * данные остаются. Следующая подписка на такой ключ перезапросит его, показывая прежние
+   * данные до ответа.
+   */
+  const invalidated = createAction(
+    `${name}/invalidated`,
+    (predicate: (key: string) => boolean) => ({ payload: { predicate } }),
+  );
 
   // Внутренние: жизненный цикл запроса и записи, диспатчат только воркеры.
   const fetchStarted = createAction<{ key: string }>(`${name}/fetchStarted`);
@@ -167,6 +194,25 @@ export function createQuery<TName extends string, TParams, TData>({
       const status: QueryStatus =
         entry.error !== undefined ? 'error' : entry.data !== undefined ? 'success' : 'idle';
       return setEntry(state, key, { ...entry, status });
+    }
+    if (patched.match(action)) {
+      const { key, updater, fetchedAt } = action.payload;
+      const entry = state.entries[key];
+      if (entry?.data === undefined) {
+        return state;
+      }
+      return setEntry(state, key, { ...entry, data: updater(entry.data), fetchedAt });
+    }
+    if (invalidated.match(action)) {
+      const { predicate } = action.payload;
+      let entries: Record<string, QueryState<TData>> | undefined;
+      for (const [key, entry] of Object.entries(state.entries)) {
+        if (entry.fetchedAt !== undefined && predicate(key)) {
+          entries ??= { ...state.entries };
+          entries[key] = { ...entry, fetchedAt: undefined };
+        }
+      }
+      return entries ? { ...state, entries } : state;
     }
     if (entryRemoved.match(action)) {
       const { key } = action.payload;
@@ -416,7 +462,7 @@ export function createQuery<TName extends string, TParams, TData>({
     reducer,
     saga,
     getKey,
-    actions: { subscribed, unsubscribed, requested },
+    actions: { subscribed, unsubscribed, requested, patched, invalidated },
     selectors,
   };
 }

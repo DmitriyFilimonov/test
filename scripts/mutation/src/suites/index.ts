@@ -8,17 +8,40 @@ import {
   entitiesSelectorsSuite,
   entitiesTableSuite,
 } from './entities-org-tree.ts';
+import { entitiesAggregatePatchSuite } from './entities-aggregate-patch.ts';
+import {
+  entitiesCardHighlightSuite,
+  entitiesFreshUpdatesSuite,
+  entitiesLivePatchSuite,
+  entitiesLiveSagaSuite,
+  entitiesRowHighlightSuite,
+  entitiesSelectorsStructureSuite,
+  entitiesUpdateHighlightSuite,
+  sharedQueryPatchSuite,
+} from './live-apply.ts';
+import {
+  entitiesLayoutTransitionSuite,
+  entitiesTableKeyboardSuite,
+  entitiesTableRowFocusSuite,
+  entitiesTreeEdgeMotionSuite,
+  entitiesTreeMotionSuite,
+} from './keyboard-motion.ts';
 import {
   entitiesOrgTableRowSuite,
   entitiesOrgTableSuite,
   entitiesTableModelSuite,
 } from './entities-org-table.ts';
-import { mockApiOrgTreeQuerySuite } from './mock-api.ts';
+import {
+  mockApiOrgTreeQuerySuite,
+  mockApiStreamHubSuite,
+  mockApiStreamRoutesSuite,
+} from './mock-api.ts';
 import {
   sharedQueryKeySuite,
   sharedQuerySubscriptionSuite,
   sharedQuerySuite,
 } from './shared-query.ts';
+import { sharedLiveBackoffSuite, sharedLiveChannelsSuite, sharedLiveSuite } from './shared-live.ts';
 import { sharedTidyTreeSuite } from './shared-tidy-tree.ts';
 import { webSuperviseSuite } from './web-supervise.ts';
 import {
@@ -44,16 +67,30 @@ export const suites: Suite[] = [
   sharedQuerySuite,
   sharedQueryKeySuite,
   sharedQuerySubscriptionSuite,
+  sharedQueryPatchSuite,
+  sharedLiveBackoffSuite,
+  sharedLiveSuite,
+  sharedLiveChannelsSuite,
   sharedTidyTreeSuite,
   entitiesIsEqualSuite,
   entitiesSchemaSuite,
   entitiesAggregateSuite,
+  entitiesAggregatePatchSuite,
   entitiesSelectorsSuite,
+  entitiesSelectorsStructureSuite,
+  entitiesLivePatchSuite,
+  entitiesLiveSagaSuite,
   entitiesTableSuite,
   entitiesFormatSuite,
   entitiesTableModelSuite,
   entitiesOrgTableSuite,
   entitiesOrgTableRowSuite,
+  entitiesTableKeyboardSuite,
+  entitiesTableRowFocusSuite,
+  entitiesRowHighlightSuite,
+  entitiesCardHighlightSuite,
+  entitiesUpdateHighlightSuite,
+  entitiesFreshUpdatesSuite,
   entitiesFetchSuite,
   entitiesExpansionSuite,
   entitiesUseExpansionSuite,
@@ -61,6 +98,9 @@ export const suites: Suite[] = [
   entitiesOrgTreeViewSuite,
   entitiesOrgNodeCardSuite,
   entitiesTreeCanvasRevealSuite,
+  entitiesLayoutTransitionSuite,
+  entitiesTreeMotionSuite,
+  entitiesTreeEdgeMotionSuite,
   entitiesRevealBoxSuite,
   entitiesLayoutForestSuite,
   entitiesNodeMetricsSuite,
@@ -71,4 +111,6 @@ export const suites: Suite[] = [
   pagesDashboardPageSuite,
   webSuperviseSuite,
   mockApiOrgTreeQuerySuite,
+  mockApiStreamHubSuite,
+  mockApiStreamRoutesSuite,
 ];

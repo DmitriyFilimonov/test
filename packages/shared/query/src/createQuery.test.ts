@@ -1,7 +1,7 @@
 import { combineSlices, configureStore, type Middleware } from '@reduxjs/toolkit';
 import createSagaMiddleware from 'redux-saga';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createQuery, DEFAULT_STALE_TIME } from './createQuery';
+import { createQuery, DEFAULT_STALE_TIME, QUERY_FUNCTION_ACTION_PATHS } from './createQuery';
 import { serializeParams } from './serializeParams';
 
 interface Item {
@@ -62,7 +62,9 @@ function setup({
   const store = configureStore({
     reducer: combineSlices(query),
     middleware: (getDefaultMiddleware) =>
-      getDefaultMiddleware().concat(recordActions, sagaMiddleware),
+      getDefaultMiddleware({
+        serializableCheck: { ignoredActionPaths: QUERY_FUNCTION_ACTION_PATHS },
+      }).concat(recordActions, sagaMiddleware),
   });
   sagaMiddleware.run(query.saga);
 
@@ -75,6 +77,11 @@ function setup({
     unsubscribe: (params: Params) => store.dispatch(actions.unsubscribed(params)),
     request: (params: Params, force?: boolean) =>
       store.dispatch(actions.requested(params, { force })),
+    patch: (params: Params, updater: (data: Item[]) => Item[]) =>
+      store.dispatch(actions.patched(params, updater)),
+    invalidate: (predicate: (key: string) => boolean) =>
+      store.dispatch(actions.invalidated(predicate)),
+    cache: () => store.getState().items,
     read: (params: Params) => {
       const root = store.getState();
       return {
@@ -532,6 +539,76 @@ describe('createQuery', () => {
       status: 'error',
       data: V1,
       error: { name: 'TypeError', message: 'Expected an array' },
+    });
+  });
+
+  describe('patched и invalidated', () => {
+    it('patched меняет data записи ключа и продлевает свежесть, фетчер не вызывается', async () => {
+      const q = setup();
+      q.subscribe(A);
+      q.requests[0]!.resolve(V1);
+      await flush();
+
+      await tick(DEFAULT_STALE_TIME - 1);
+      const patchedAt = Date.now();
+      q.patch(A, (data) => data.map((item) => ({ ...item, value: item.value + 1 })));
+      expect(q.read(A)).toMatchObject({ status: 'success', data: V2, fetchedAt: patchedAt });
+
+      // Первый ответ уже протух бы, патч — нет: новая подписка данные не перезапрашивает.
+      await tick(2);
+      q.unsubscribe(A);
+      q.subscribe(A);
+      expect(q.fetcher).toHaveBeenCalledTimes(1);
+      expect(q.dispatchedTypes).not.toContain('items/requested');
+    });
+
+    it('patched не трогает записи других ключей; запись без данных не меняется', async () => {
+      const q = setup();
+      q.subscribe(A);
+      q.subscribe(B);
+      q.requests[0]!.resolve(V1);
+      q.requests[1]!.resolve(VB);
+      await flush();
+      const entryB = q.cache().entries[serializeParams(B)];
+
+      q.patch(A, () => V2);
+      expect(q.read(A).data).toEqual(V2);
+      expect(q.cache().entries[serializeParams(B)]).toBe(entryB);
+
+      const cache = q.cache();
+      const updater = vi.fn(() => V2);
+      q.patch(C, updater);
+      expect(q.cache()).toBe(cache);
+      expect(updater).not.toHaveBeenCalled();
+    });
+
+    it('invalidated помечает подходящие записи протухшими, не удаляя данных; подписка перезапрашивает', async () => {
+      const q = setup();
+      q.subscribe(A);
+      q.subscribe(B);
+      q.requests[0]!.resolve(V1);
+      q.requests[1]!.resolve(VB);
+      await flush();
+      const keyA = serializeParams(A);
+
+      q.invalidate((key) => key !== keyA);
+      expect(q.read(B)).toMatchObject({ status: 'success', data: VB, fetchedAt: undefined });
+      expect(q.read(A)).toMatchObject({ data: V1, fetchedAt: Date.now() });
+      expect(q.fetcher).toHaveBeenCalledTimes(2);
+
+      // Повтор без свежих подходящих записей стейт не меняет.
+      const cache = q.cache();
+      q.invalidate((key) => key !== keyA);
+      expect(q.cache()).toBe(cache);
+
+      q.unsubscribe(A);
+      q.unsubscribe(B);
+      q.subscribe(A);
+      expect(q.fetcher).toHaveBeenCalledTimes(2);
+      q.subscribe(B);
+      expect(q.fetcher).toHaveBeenCalledTimes(3);
+      expect(q.fetcher).toHaveBeenLastCalledWith(B, expect.any(AbortSignal));
+      expect(q.read(B)).toMatchObject({ data: VB, isValidating: true });
     });
   });
 });
