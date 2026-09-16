@@ -6,9 +6,13 @@ services:
       dockerfile: apps/mock-api/Dockerfile
     # tini PID 1: SIGTERM завершает node сразу, а не через 10 с по SIGKILL.
     init: true
+    # Ключ модели — только этому сервису: в сборку клиента он не передаётся.
+    # Дефолт из .env.example; .env переопределяет.
+    env_file:
+      - path: .env.example
+      - path: .env
+        required: false
     environment:
-      # Ключ модели — только этому сервису: в сборку клиента он не передаётся.
-      LLM_API_KEY: ${LLM_API_KEY:-sk-lFUC5GaXjN25pLEv_zb7SQ}
       STREAM_INTERVAL_MS: ${STREAM_INTERVAL_MS:-5000}
     ports:
       - '${PORT_API:-3002}:3001'
