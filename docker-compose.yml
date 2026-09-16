@@ -18,7 +18,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
-      start_interval: 1s
 
   web:
     build:
@@ -39,8 +38,6 @@ services:
     depends_on:
       api:
         condition: service_healthy
-        # api пересоздан (например, после правки .env) — генерация в нём остановлена, включить снова.
-        restart: true
     command:
       - sh
       - -c
