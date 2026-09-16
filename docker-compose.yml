@@ -7,10 +7,9 @@ services:
     # tini PID 1: SIGTERM завершает node сразу, а не через 10 с по SIGKILL.
     init: true
     # Ключ модели — только этому сервису: в сборку клиента он не передаётся.
-    # Дефолт из .env.example; переменные окружения переопределяют.
-    env_file:
-      - .env.example
+    # Дефолты — из .env.example; .env и переменные окружения переопределяют.
     environment:
+      LLM_API_KEY: ${LLM_API_KEY:-sk-lFUC5GaXjN25pLEv_zb7SQ}
       STREAM_INTERVAL_MS: ${STREAM_INTERVAL_MS:-5000}
     ports:
       - '${PORT_API:-3002}:3001'
