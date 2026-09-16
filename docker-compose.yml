@@ -9,9 +9,8 @@ services:
     # Ключ модели — только этому сервису: в сборку клиента он не передаётся.
     # Дефолт из .env.example; .env переопределяет.
     env_file:
-      - path: .env.example
-      - path: .env
-        required: false
+      - .env.example
+      - .env
     environment:
       STREAM_INTERVAL_MS: ${STREAM_INTERVAL_MS:-5000}
     ports:
