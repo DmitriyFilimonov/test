@@ -29,6 +29,8 @@ export type OrgTableSortColumn = (typeof ORG_TABLE_SORT_COLUMNS)[number];
 /** Строка аналитической таблицы: узел оргдерева с итогами по всему подразделению. */
 export interface TableRow {
   id: string;
+  /** ID родителя, null для корневых. Нужно для достраивания предков при клиентской фильтрации. */
+  parentId: string | null;
   name: string;
   /** Уровень в дереве, 1-based: дивизион — 1. */
   level: number;
@@ -107,6 +109,7 @@ export const selectTableRows = createSelector(
       const total = aggregates.get(node.id)!;
       rows.push({
         id: node.id,
+        parentId: node.parentId,
         name: node.name,
         level: levels.get(node.id)!,
         totalHeadcount: total.headcount,

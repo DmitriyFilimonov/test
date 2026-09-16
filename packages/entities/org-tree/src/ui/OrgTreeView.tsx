@@ -11,6 +11,13 @@ import { TreeCanvas } from './TreeCanvas';
 
 export type { OrgTreeViewProps } from '../model/useTreeModel';
 
+const Root = styled.section`
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+`;
+
 const TreeArea = styled.div`
   height: 100%;
 `;
@@ -82,7 +89,7 @@ export function OrgTreeView(props: OrgTreeViewProps) {
   }
 
   return (
-    <section>
+    <Root>
       <Toolbar>
         <Button type="button" onClick={model.expandAll} disabled={!model.hasTree}>
           Развернуть всё
@@ -105,6 +112,6 @@ export function OrgTreeView(props: OrgTreeViewProps) {
           Обновление…
         </ValidatingBadge>
       </Frame>
-    </section>
+    </Root>
   );
 }

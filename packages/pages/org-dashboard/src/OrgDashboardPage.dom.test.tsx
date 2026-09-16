@@ -99,9 +99,18 @@ function resize(next: number) {
 let requests: URLSearchParams[] = [];
 const scrollIntoView = vi.fn();
 
+/** Запросы на разбор фразы: текст и сигнал отмены. */
+let parseRequests: { query: string; signal: AbortSignal | null | undefined }[] = [];
+const textParse = async (query: string) =>
+  Response.json({ mode: 'text', filter: { q: query }, explanation: '' });
+/** Ответ сервера на разбор; по умолчанию — текстовый. */
+let parseResponse: (query: string) => Promise<Response> = textParse;
+
 beforeEach(() => {
   width = 1440;
   requests = [];
+  parseRequests = [];
+  parseResponse = textParse;
   vi.stubGlobal('matchMedia', (query: string) => {
     return {
       media: query,
@@ -121,8 +130,13 @@ beforeEach(() => {
   );
   vi.stubGlobal(
     'fetch',
-    vi.fn(async (input: string) => {
+    vi.fn(async (input: string, init?: RequestInit) => {
       const url = new URL(input, 'http://localhost');
+      if (url.pathname === '/api/search/parse') {
+        const { query } = JSON.parse(String(init?.body)) as { query: string };
+        parseRequests.push({ query, signal: init?.signal });
+        return parseResponse(query);
+      }
       requests.push(url.searchParams);
       return Response.json(respond(url));
     }),
@@ -466,5 +480,136 @@ describe('OrgDashboardPage: выделение', () => {
     fireEvent.click(radio('Дерево и таблица'));
     await screen.findByLabelText('Оргструктура');
     expect(treeCard('t-1')!.dataset.selected).toBe('true');
+  });
+});
+
+describe('OrgDashboardPage: AI-поиск', () => {
+  const COMMANDS = { mode: 'structured', filter: { levels: [3] }, explanation: 'команды' };
+  const structuredParse = async () => Response.json(COMMANDS);
+  const pendingParse = () => new Promise<Response>(() => {});
+  /** Дольше дебаунса поля и дебаунса разбора вместе: разбор, если бы он был, уже ушёл бы. */
+  const settle = () => act(() => new Promise((resolve) => setTimeout(resolve, 600)));
+  const filterBar = () => screen.queryByRole('button', { name: 'Сбросить' });
+
+  it('текстовый результат через 250 мс, не дожидаясь разбора', async () => {
+    parseResponse = pendingParse;
+    await loaded('/?view=table');
+
+    typeQuery('Альфа');
+    await waitFor(() => expect(requests.at(-1)?.get('q')).toBe('Альфа'));
+    await waitFor(() => expect(tableRow('t-2')).toBeNull());
+    expect(tableRow('t-1')).not.toBeNull();
+    await waitFor(() => expect(parseRequests.map((request) => request.query)).toEqual(['Альфа']));
+    expect(screen.getByText('Разбор')).toBeDefined();
+  });
+
+  it('structured: адрес получил поля, строки отфильтрованы, плашка показана, нового запроса к /api/org-tree нет', async () => {
+    parseResponse = structuredParse;
+    await loaded('/?view=table');
+
+    typeQuery('все команды');
+    await waitFor(() => expect(requests.at(-1)?.get('q')).toBe('все команды'));
+    const requestCount = requests.length;
+
+    await waitFor(() => expect(search().get('levels')).toBe('3'));
+    await waitFor(() => expect(filterBar()).not.toBeNull());
+    expect(screen.getByRole('button', { name: 'Удалить условие: команды' })).toBeDefined();
+    for (const id of ['t-1', 't-2', 't-3']) {
+      expect(tableRow(id)!.dataset.matches).toBe('true');
+    }
+    // Отдел без команд скрыт, предки команд — контекст.
+    expect(tableRow('p-2')).toBeNull();
+    expect(tableRow('p-1')!.dataset.matches).toBe('false');
+    await settle();
+    expect(requests).toHaveLength(requestCount);
+  });
+
+  it('text: адрес не изменился, плашки нет', async () => {
+    await loaded('/?view=table');
+
+    typeQuery('Альфа');
+    await waitFor(() => expect(parseRequests).toHaveLength(1));
+    await settle();
+
+    expect(Object.fromEntries(search())).toEqual({ view: 'table', q: 'Альфа' });
+    expect(filterBar()).toBeNull();
+    expect(screen.queryByText('Разбор')).toBeNull();
+  });
+
+  it('изменение текста во время разбора отменяет предыдущий', async () => {
+    parseResponse = pendingParse;
+    await loaded('/?view=table');
+
+    typeQuery('Альфа');
+    await waitFor(() => expect(parseRequests).toHaveLength(1));
+    expect(parseRequests[0]!.signal?.aborted).toBe(false);
+
+    typeQuery('Бета');
+    await waitFor(() => expect(parseRequests[0]!.signal?.aborted).toBe(true));
+    await waitFor(() =>
+      expect(parseRequests.map((request) => request.query)).toEqual(['Альфа', 'Бета']),
+    );
+  });
+
+  it('«искать по тексту» возвращает q и не разбирает его снова', async () => {
+    parseResponse = structuredParse;
+    await loaded('/?view=table');
+
+    typeQuery('все команды');
+    await waitFor(() => expect(search().get('levels')).toBe('3'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Искать по тексту' }));
+
+    await waitFor(() => expect(search().get('q')).toBe('все команды'));
+    expect(search().has('levels')).toBe(false);
+    expect(probe.type).toBe('REPLACE');
+    await waitFor(() => expect(searchbox().value).toBe('все команды'));
+    await settle();
+    expect(parseRequests).toHaveLength(1);
+    expect(filterBar()).toBeNull();
+  });
+
+  it('снятие одного условия не трогает остальные', async () => {
+    await loaded('/?levels=3&minBudget=100&view=table');
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Удалить условие: команды' }));
+
+    await waitFor(() => expect(search().has('levels')).toBe(false));
+    expect(Object.fromEntries(search())).toEqual({ minBudget: '100', view: 'table' });
+    expect(screen.getByRole('button', { name: 'Удалить условие: бюджет от 100' })).toBeDefined();
+  });
+
+  it('открытие по адресу с фильтром: строки отфильтрованы, запроса к /api/search/parse нет', async () => {
+    await loaded('/?levels=3&view=table');
+
+    await waitFor(() => expect(filterBar()).not.toBeNull());
+    expect(tableRow('p-2')).toBeNull();
+    expect(tableRow('t-3')!.dataset.matches).toBe('true');
+    await settle();
+    expect(parseRequests).toHaveLength(0);
+  });
+
+  it('сбой разбора: текстовый результат на месте, ошибки нет', async () => {
+    parseResponse = async () => new Response('fail', { status: 500 });
+    await loaded('/?view=table');
+
+    typeQuery('Альфа');
+    await waitFor(() => expect(parseRequests).toHaveLength(1));
+    await settle();
+
+    expect(tableRow('t-1')).not.toBeNull();
+    expect(tableRow('t-2')).toBeNull();
+    expect(search().get('q')).toBe('Альфа');
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByText('Разбор')).toBeNull();
+    expect(filterBar()).toBeNull();
+  });
+
+  it('дерево при структурном фильтре не приглушено', async () => {
+    await loaded('/?levels=3');
+    await screen.findByLabelText('Оргструктура');
+
+    await waitFor(() => expect(tableRow('p-2')).toBeNull());
+    expect(tree().querySelectorAll('[data-dimmed="true"]')).toHaveLength(0);
+    expect(treeCard('p-2')).not.toBeNull();
   });
 });

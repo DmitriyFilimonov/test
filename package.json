@@ -15,6 +15,7 @@
     "lint": "lerna run lint",
     "typecheck": "lerna run typecheck",
     "build": "lerna run build",
+    "check:size": "node scripts/size/src/check.ts",
     "test": "vitest run",
     "test:mutation": "node scripts/mutation/src/run.ts",
     "format": "prettier --write .",

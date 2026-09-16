@@ -5,9 +5,11 @@ import {
   useTableModel,
   type OrgTreeParams,
   type RevealRequest,
+  type StructuredFilter,
 } from '@entities/org-tree';
 import styled from 'styled-components';
 import { useOrgDashboardModel } from './model/useOrgDashboardModel';
+import { FilterBar } from './ui/FilterBar';
 import { LiveIndicator } from './ui/LiveIndicator';
 import { ViewSwitcher } from './ui/ViewSwitcher';
 
@@ -32,23 +34,68 @@ const Title = styled.h1`
 const Panes = styled.div`
   display: grid;
   gap: ${({ theme }) => theme.space.md};
+  flex: 1;
+  min-height: 0;
 
   &[data-view='split'] {
     grid-template-columns: minmax(0, 1fr) minmax(720px, 1fr);
   }
 
-  &[data-view='split'] > [data-pane='table'] {
-    position: relative;
+  & > [data-pane] {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
   }
 
-  &[data-view='split'] > [data-pane='table'] > * {
-    position: absolute;
-    inset: 0;
+  & > [data-pane='tree'] > * {
+    flex: 1;
+    min-height: 0;
+  }
+
+  & > [data-pane='table'] > [data-table-container] {
+    flex: 1;
+    min-height: 0;
   }
 `;
 
 const Pane = styled.div`
   min-width: 0;
+`;
+
+/* Индикатор разбора — фиксированная ширина, не сдвигает макет. */
+const ParsingIndicator = styled.span`
+  display: inline-flex;
+  align-items: center;
+  gap: ${({ theme }) => theme.space.xs};
+  padding: 0 ${({ theme }) => theme.space.xs};
+  font-size: ${({ theme }) => theme.fontSizes.sm};
+  color: ${({ theme }) => theme.colors.textMuted};
+`;
+
+const ParsingDots = styled.span`
+  display: inline-block;
+  width: 1em;
+  text-align: center;
+
+  &::after {
+    content: '…';
+    animation: dots 1.5s steps(4, end) infinite;
+  }
+
+  @keyframes dots {
+    0% {
+      content: '';
+    }
+    25% {
+      content: '.';
+    }
+    50% {
+      content: '..';
+    }
+    75% {
+      content: '...';
+    }
+  }
 `;
 
 interface TablePaneProps {
@@ -57,6 +104,7 @@ interface TablePaneProps {
   selectedId: string | null;
   onSelect: (id: string) => void;
   revealRequest: RevealRequest | null;
+  structuredFilter?: StructuredFilter;
 }
 
 /**
@@ -69,8 +117,9 @@ function TablePane({
   selectedId,
   onSelect,
   revealRequest,
+  structuredFilter,
 }: TablePaneProps) {
-  const model = useTableModel({ params, onParamsChange });
+  const model = useTableModel({ params, onParamsChange, structuredFilter });
   return (
     <OrgTable
       model={model}
@@ -81,12 +130,20 @@ function TablePane({
   );
 }
 
+const PageRoot = styled.div`
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  height: 100%;
+  padding: ${({ theme }) => theme.space.md};
+`;
+
 export function OrgDashboardPage() {
   const model = useOrgDashboardModel();
   const { expansion } = model;
 
   return (
-    <>
+    <PageRoot>
       <Header>
         <Title>Оргструктура</Title>
         <ViewSwitcher views={model.views} value={model.view} onChange={model.setView} />
@@ -111,16 +168,34 @@ export function OrgDashboardPage() {
         )}
         {model.showTable && (
           <Pane data-pane="table">
-            <TablePane
-              params={model.params}
-              onParamsChange={model.setParams}
-              selectedId={model.selectedId}
-              onSelect={model.selectFromTable}
-              revealRequest={model.tableReveal}
-            />
+            {model.hasStructuredFilter && (
+              <FilterBar
+                explanation={model.filterExplanation}
+                filter={model.structuredFilter}
+                onRemoveCondition={model.removeFilterCondition}
+                onSearchByText={model.searchByText}
+                onClear={model.clearStructuredFilter}
+              />
+            )}
+            {model.isParsing && !model.hasStructuredFilter && (
+              <ParsingIndicator>
+                Разбор
+                <ParsingDots />
+              </ParsingIndicator>
+            )}
+            <div data-table-container>
+              <TablePane
+                params={model.params}
+                onParamsChange={model.setParams}
+                selectedId={model.selectedId}
+                onSelect={model.selectFromTable}
+                revealRequest={model.tableReveal}
+                structuredFilter={model.structuredFilter}
+              />
+            </div>
           </Pane>
         )}
       </Panes>
-    </>
+    </PageRoot>
   );
 }

@@ -91,6 +91,10 @@ export type {
 } from './model/updates';
 export { ORG_TABLE_COLUMNS, ORG_TABLE_SORT_COLUMNS, selectTableRows } from './model/table';
 export type { OrgTableColumn, OrgTableSortColumn, TableRow } from './model/table';
+export { applyStructuredFilter, isEmptyFilter } from './model/structuredFilter';
+export type { StructuredFilter } from './model/structuredFilter';
+export { useSearchParse, type ParseResult } from './model/useSearchParse';
+export type { SearchParseModel, UseSearchParseOptions } from './model/useSearchParse';
 export { TABLE_QUERY_DEBOUNCE_MS, useTableModel } from './model/useTableModel';
 export type { TableModel, UseTableModelOptions } from './model/useTableModel';
 export { useExpansion } from './model/useExpansion';

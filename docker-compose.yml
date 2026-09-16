@@ -1,0 +1,47 @@
+# web (nginx: статика клиента, прокси /api) → api (мок-сервер). Переменные — .env.example.
+services:
+  api:
+    build:
+      context: .
+      dockerfile: apps/mock-api/Dockerfile
+    # tini PID 1: SIGTERM завершает node сразу, а не через 10 с по SIGKILL.
+    init: true
+    environment:
+      # Ключ модели — только этому сервису: в сборку клиента он не передаётся.
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      STREAM_INTERVAL_MS: ${STREAM_INTERVAL_MS:-5000}
+    ports:
+      - '${PORT_API:-3002}:3001'
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '--spider', 'http://127.0.0.1:3001/api/org-tree']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+      start_interval: 1s
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    ports:
+      - '${PORT_WEB:-8080}:80'
+    depends_on:
+      api:
+        condition: service_healthy
+
+  # Включает генерацию патчей, как только api здоров, и завершается (решение автора: мок меняет
+  # данные сам). STREAM_AUTOSTART=false — генерация не стартует, данные мока не меняются.
+  stream-autostart:
+    image: node:24-alpine
+    environment:
+      STREAM_AUTOSTART: ${STREAM_AUTOSTART:-true}
+    depends_on:
+      api:
+        condition: service_healthy
+        # api пересоздан (например, после правки .env) — генерация в нём остановлена, включить снова.
+        restart: true
+    command:
+      - sh
+      - -c
+      - '[ "$$STREAM_AUTOSTART" != true ] || wget -q -O - --post-data= http://api:3001/api/dev/stream/start'

@@ -81,6 +81,11 @@ const SearchInput = styled.input`
     box-shadow: 0 0 0 2px ${({ theme }) => theme.colors.focus};
   }
 
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
   /* Очистка — одна, своей кнопкой: она сбрасывает q сразу, без паузы дебаунса. */
   &::-webkit-search-cancel-button {
     appearance: none;
@@ -306,7 +311,7 @@ export function OrgTable({ model, selectedId, onSelect, revealRequest = null }: 
   const inputRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLTableSectionElement>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
-  const { clearQuery, setDraftQuery } = model;
+  const { clearQuery, setDraftQuery, filterDisabled } = model;
   const keyboard = useTableKeyboard({
     rows: model.isLoading ? NO_ROWS : model.rows,
     onSelect,
@@ -396,8 +401,13 @@ export function OrgTable({ model, selectedId, onSelect, revealRequest = null }: 
           maxLength={ORG_TREE_MAX_QUERY_LENGTH}
           value={model.draftQuery}
           onChange={(event) => setDraftQuery(event.currentTarget.value)}
+          disabled={filterDisabled}
         />
-        <Button type="button" onClick={handleClear} disabled={model.draftQuery === ''}>
+        <Button
+          type="button"
+          onClick={handleClear}
+          disabled={filterDisabled || model.draftQuery === ''}
+        >
           Очистить
         </Button>
         <Status>

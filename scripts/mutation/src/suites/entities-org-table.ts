@@ -55,8 +55,8 @@ export const entitiesTableModelSuite: Suite = {
     },
     {
       name: 'isPlaceholder игнорируется: строки пустеют до ответа',
-      from: 'const rows = useOrgTreeSelector((state) => selectTableRows(state, params));',
-      to: 'const all = useOrgTreeSelector((state) => selectTableRows(state, params));\n  const rows = isPlaceholder ? [] : all;',
+      from: 'const baseRows = useOrgTreeSelector((state) => selectTableRows(state, params));',
+      to: 'const all = useOrgTreeSelector((state) => selectTableRows(state, params));\nconst baseRows = isPlaceholder ? [] : all;',
     },
     {
       name: 'ошибка без данных показывается как загрузка',

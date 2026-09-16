@@ -10,6 +10,7 @@ import {
 import { generateOrgTree, makeContractViolatingPayload, type OrgNode } from './org-tree-data';
 import { buildOrgTreeResponse, parseOrgTreeParams } from './org-tree-query';
 import { createStreamHub } from './org-tree-stream';
+import { createSearchParseHandler } from './search-parse';
 
 const MAX_DELAY_MS = 60_000;
 const SCENARIOS = ['empty', 'error', 'invalid'] as const;
@@ -252,6 +253,13 @@ export function createApp({
   app.post('/api/dev/stream/kill', (_req, res) => {
     res.json({ closed: hub.kill() });
   });
+
+  /**
+   * POST /api/search/parse — разбор фразы на естественном языке в структурированный фильтр.
+   * С LLM_API_KEY — GLM 4.7 FlashX через Timeweb AI; без ключа модели нет и ответ всегда текстовый.
+   * Любая ошибка (сеть, таймаут, невалидный JSON) — fallback на текстовый поиск.
+   */
+  app.post('/api/search/parse', express.json(), createSearchParseHandler());
 
   app.use('/api', (_req, res) => {
     res.status(404).json({ error: 'Not found' });

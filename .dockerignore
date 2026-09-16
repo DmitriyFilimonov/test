@@ -1,0 +1,17 @@
+# Контекст сборки — корень монорепозитория.
+**/node_modules
+**/dist
+.git
+docs
+
+# Файлы .env не копируются в образы: ключ модели не должен остаться в слоях. В контейнер
+# api он приходит при запуске переменной окружения — docker compose читает корневой .env
+# на хосте и передаёт LLM_API_KEY через environment в docker-compose.yml.
+**/.env
+**/.env.*
+
+.nx
+.idea
+.vscode
+**/*.log
+**/*.mutation-backup

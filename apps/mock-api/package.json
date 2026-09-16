@@ -17,6 +17,9 @@
     "vitest": "^5.0.0"
   },
   "dependencies": {
-    "express": "^5.2.1"
+    "dotenv": "^16.4.7",
+    "express": "^5.2.1",
+    "openai": "^4.73.0",
+    "zod": "^4.6.5"
   }
 }

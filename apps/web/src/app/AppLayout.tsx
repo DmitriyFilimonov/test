@@ -13,6 +13,7 @@ const GlobalStyle = createGlobalStyle`
 
 const Header = styled.header`
   display: flex;
+  flex: none;
   gap: ${({ theme }) => theme.space.md};
   padding: ${({ theme }) => `${theme.space.sm} ${theme.space.lg}`};
   border-bottom: 1px solid ${({ theme }) => theme.colors.border};
@@ -31,12 +32,19 @@ const Link = styled(NavLink)`
 `;
 
 const Main = styled.main`
-  padding: ${({ theme }) => theme.space.lg};
+  flex: 1;
+  min-height: 0;
+`;
+
+const Root = styled.div`
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
 `;
 
 export function AppLayout() {
   return (
-    <>
+    <Root>
       <GlobalStyle />
       <Header>
         <Link to="/" end>
@@ -47,6 +55,6 @@ export function AppLayout() {
       <Main>
         <Outlet />
       </Main>
-    </>
+    </Root>
   );
 }

@@ -47,6 +47,7 @@ describe('selectTableRows', () => {
     const rows = byId(selectTableRows(stateWith(makeOrgNodes()), P));
     expect(rows.get('t-1')).toEqual({
       id: 't-1',
+      parentId: 'p-1',
       name: 'Команда 1',
       level: 3,
       totalHeadcount: 6,

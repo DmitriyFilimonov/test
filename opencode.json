@@ -1,0 +1,21 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "permission": {
+    "external_directory": "allow"
+  },
+  "provider": {
+    "timeweb": {
+      "models": {
+        "dashscope/qwen3.6-plus": {
+          "name:": "dashscope/qwen3.6-plus"
+        },
+        "dashscope/qwen3.7-max": {
+          "name:": "dashscope/qwen3.7-max"
+        }
+      },
+      "options": {
+        "baseURL": "https://api.timeweb.ai/v1"
+      }
+    }
+  }
+}

@@ -17,6 +17,7 @@ const NBSP = String.fromCharCode(0xa0);
 const ROWS: TableRow[] = [
   {
     id: 'd-1',
+    parentId: null,
     name: 'Дивизион 1',
     level: 1,
     totalHeadcount: 120,
@@ -26,6 +27,7 @@ const ROWS: TableRow[] = [
   },
   {
     id: 'p-1',
+    parentId: 'd-1',
     name: 'Отдел 1',
     level: 2,
     totalHeadcount: 40,
@@ -35,6 +37,7 @@ const ROWS: TableRow[] = [
   },
   {
     id: 't-1',
+    parentId: 'p-1',
     name: 'Команда 1',
     level: 3,
     totalHeadcount: 0,
@@ -67,6 +70,7 @@ function makeModel(overrides: Partial<TableModel> = {}): TableModel {
     draftQuery: '',
     setDraftQuery: vi.fn(),
     clearQuery: vi.fn(),
+    filterDisabled: false,
     toggleSort: vi.fn(),
     retry: vi.fn(),
     ...overrides,

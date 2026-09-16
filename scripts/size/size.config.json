@@ -1,0 +1,6 @@
+{
+  "dist": "apps/web/dist",
+  "extensions": [".js", ".css"],
+  "gzipLevel": 9,
+  "maxGzipKb": 200
+}

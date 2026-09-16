@@ -6,6 +6,7 @@ import type { OrgTreeParams, OrgTreeSortColumn, OrgTreeSortDirection } from './p
 import type { OrgTreeRootState } from './selectors';
 import { selectTableRows, type OrgTableSortColumn, type TableRow } from './table';
 import type { OrgTreeUpdatesState } from './updates';
+import { applyStructuredFilter, isEmptyFilter, type StructuredFilter } from './structuredFilter';
 
 /** Пауза ввода, после которой текст поля уходит в параметры запроса. */
 export const TABLE_QUERY_DEBOUNCE_MS = 250;
@@ -18,6 +19,11 @@ export interface UseTableModelOptions {
    * приходят обратно через `params`.
    */
   onParamsChange: (params: OrgTreeParams) => void;
+  /**
+   * Структурный фильтр из адресной строки. Применяется к строкам таблицы на клиенте,
+   * не меняет ключ кэша и не уходит в запрос.
+   */
+  structuredFilter?: StructuredFilter;
 }
 
 export interface TableModel {
@@ -50,6 +56,11 @@ export interface TableModel {
   setDraftQuery: (query: string) => void;
   /** Очистить фильтр: поле и `q` — сразу, без паузы. */
   clearQuery: () => void;
+  /**
+   * Поле поиска заблокировано — активен структурный фильтр. Пользователь снимает его через
+   * плашку, а не через поле.
+   */
+  filterDisabled: boolean;
   /** Та же колонка — обратное направление, другая — эта колонка по возрастанию. */
   toggleSort: (column: OrgTableSortColumn) => void;
   retry: () => void;
@@ -62,11 +73,23 @@ const useOrgTreeSelector = useSelector.withTypes<OrgTreeRootState>();
  * дебаунсом, переключение сортировки. Сортирует и фильтрует сервер, компонент таблицы только
  * рисует модель.
  */
-export function useTableModel({ params, onParamsChange }: UseTableModelOptions): TableModel {
+export function useTableModel({
+  params,
+  onParamsChange,
+  structuredFilter,
+}: UseTableModelOptions): TableModel {
   const { status, error, hasData, isEmpty, isValidating, isPlaceholder, retry } =
     useOrgTree(params);
-  const rows = useOrgTreeSelector((state) => selectTableRows(state, params));
+  const baseRows = useOrgTreeSelector((state) => selectTableRows(state, params));
   const updates = useOrgTreeUpdates();
+
+  // Клиентская фильтрация поверх загруженных данных
+  const rows = useMemo(() => {
+    if (!structuredFilter || isEmptyFilter(structuredFilter)) {
+      return baseRows;
+    }
+    return applyStructuredFilter(baseRows, structuredFilter);
+  }, [baseRows, structuredFilter]);
 
   const [draftQuery, setDraftQuery] = useState(params.q);
   // q из прошлого рендера — чтобы заметить, что params.q изменился, — и q, отправленное хуком
@@ -131,6 +154,7 @@ export function useTableModel({ params, onParamsChange }: UseTableModelOptions):
       draftQuery,
       setDraftQuery,
       clearQuery,
+      filterDisabled: structuredFilter != null && !isEmptyFilter(structuredFilter),
       toggleSort,
       retry,
     }),
@@ -147,6 +171,7 @@ export function useTableModel({ params, onParamsChange }: UseTableModelOptions):
       error,
       draftQuery,
       clearQuery,
+      structuredFilter,
       toggleSort,
       retry,
     ],

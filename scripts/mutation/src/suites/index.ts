@@ -27,6 +27,14 @@ import {
   entitiesTreeMotionSuite,
 } from './keyboard-motion.ts';
 import {
+  entitiesSearchParseSuite,
+  entitiesStructuredFilterSuite,
+  entitiesTableStructuredFilterSuite,
+  mockApiSearchParseSuite,
+  pagesDashboardAiSearchPageSuite,
+  pagesDashboardAiSearchSuite,
+} from './search-parse.ts';
+import {
   entitiesOrgTableRowSuite,
   entitiesOrgTableSuite,
   entitiesTableModelSuite,
@@ -109,8 +117,14 @@ export const suites: Suite[] = [
   pagesSplitAvailableSuite,
   pagesDashboardModelSuite,
   pagesDashboardPageSuite,
+  entitiesStructuredFilterSuite,
+  entitiesTableStructuredFilterSuite,
+  entitiesSearchParseSuite,
+  pagesDashboardAiSearchSuite,
+  pagesDashboardAiSearchPageSuite,
   webSuperviseSuite,
   mockApiOrgTreeQuerySuite,
   mockApiStreamHubSuite,
   mockApiStreamRoutesSuite,
+  mockApiSearchParseSuite,
 ];

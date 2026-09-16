@@ -6,7 +6,8 @@ import styled from 'styled-components';
  */
 export const Frame = styled.div`
   position: relative;
-  height: ${({ theme }) => theme.tree.canvasHeight};
+  flex: 1;
+  min-height: 0;
   border: 1px solid ${({ theme }) => theme.colors.border};
   border-radius: ${({ theme }) => theme.radii.md};
   background: ${({ theme }) => theme.colors.surface};
@@ -17,6 +18,7 @@ export const Frame = styled.div`
 /** Высота как у панели таблицы: в режиме «вместе» холст и таблица начинаются на одной линии. */
 export const Toolbar = styled.div`
   display: flex;
+  flex: none;
   align-items: center;
   height: 32px;
   gap: ${({ theme }) => theme.space.sm};
