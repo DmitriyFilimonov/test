@@ -7,11 +7,9 @@ services:
     # tini PID 1: SIGTERM завершает node сразу, а не через 10 с по SIGKILL.
     init: true
     # Ключ модели — только этому сервису: в сборку клиента он не передаётся.
-    # Дефолт из .env.example; .env переопределяет.
+    # Дефолт из .env.example; переменные окружения переопределяют.
     env_file:
       - .env.example
-      - path: .env
-        required: false
     environment:
       STREAM_INTERVAL_MS: ${STREAM_INTERVAL_MS:-5000}
     ports:
